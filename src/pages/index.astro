@@ -1,0 +1,27 @@
+---
+import AboutSection from '@/components/AboutSection.astro';
+import BookingSection from '@/components/BookingSection.astro';
+import EventsSection from '@/components/EventsSection.astro';
+import Footer from '@/components/Footer.astro';
+import GallerySection from '@/components/GallerySection.astro';
+import GiveSection from '@/components/GiveSection.astro';
+import Header from '@/components/Header.astro';
+import Hero from '@/components/Hero.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { site } from '@/data/site';
+---
+
+<BaseLayout title={site.title} description={site.description}>
+  <Header />
+
+  <main id="top">
+    <Hero />
+    <AboutSection />
+    <EventsSection />
+    <BookingSection />
+    <GallerySection />
+    <GiveSection />
+  </main>
+
+  <Footer />
+</BaseLayout>

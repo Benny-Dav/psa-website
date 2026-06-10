@@ -1,0 +1,71 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="description" content={description} />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content="/images/psa-logo.png" />
+    <meta name="theme-color" content="#061B2D" />
+    <link rel="icon" type="image/png" href="/images/psa-logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <title>{title}</title>
+    <script is:inline>
+      if ('scrollRestoration' in history) {
+        history.scrollRestoration = 'manual';
+      }
+
+      const navigationEntry = performance.getEntriesByType('navigation')[0];
+      const isReload = navigationEntry && navigationEntry.type === 'reload';
+
+      if (isReload && window.location.hash) {
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+
+      const resetScrollOnReload = () => {
+        if (!isReload && window.location.hash) return;
+
+        window.scrollTo(0, 0);
+        requestAnimationFrame(() => window.scrollTo(0, 0));
+        setTimeout(() => window.scrollTo(0, 0), 80);
+        setTimeout(() => window.scrollTo(0, 0), 240);
+      };
+
+      resetScrollOnReload();
+      window.addEventListener('pageshow', resetScrollOnReload);
+      window.addEventListener('load', resetScrollOnReload);
+
+      window.addEventListener('click', (event) => {
+        const link = event.target instanceof Element ? event.target.closest('a[href^="#"]') : null;
+        if (!(link instanceof HTMLAnchorElement) || !link.hash) return;
+
+        const target = document.querySelector(link.hash);
+        if (!(target instanceof HTMLElement)) return;
+
+        event.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+      });
+    </script>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

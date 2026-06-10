@@ -1,0 +1,359 @@
+---
+import SectionHeading from '@/components/SectionHeading.astro';
+import { site } from '@/data/site';
+---
+
+<section class="booking section-band" id="booking">
+  <div class="page-shell">
+    <SectionHeading eyebrow="Booking" title="Book a one-on-one consultation" align="center" />
+    <div class="booking__grid" data-booking-widget data-whatsapp-number={site.whatsappNumber}>
+      <div class="calendar-card" aria-label="Appointment calendar preview">
+        <div class="calendar-card__top">
+          <button type="button" aria-label="Previous month" data-booking-prev>‹</button>
+          <h3 data-booking-month></h3>
+          <button type="button" aria-label="Next month" data-booking-next>›</button>
+        </div>
+        <div class="calendar-grid calendar-grid--days">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span>{day}</span>)}
+        </div>
+        <div class="booking-calendar-wrap">
+          <div class="booking-calendar-loading" data-booking-calendar-loading>
+            <span aria-hidden="true"></span>
+            <p>Loading calendar</p>
+          </div>
+          <div class="calendar-grid" data-booking-calendar hidden></div>
+        </div>
+      </div>
+
+      <div class="slot-card" data-slot-card>
+        <div class="booking-confirmation" data-booking-confirmation hidden>
+          <span aria-hidden="true">✓</span>
+          <p class="eyebrow">Request Received</p>
+          <h3 data-booking-success-title>Session request sent</h3>
+          <p data-booking-success-copy>We will confirm availability shortly.</p>
+        </div>
+
+        <div class="slot-card__content" data-slot-card-content hidden>
+          <p class="eyebrow">Selected Date</p>
+          <h3 data-selected-date>Select a date</h3>
+          <div class="slot-list" data-booking-slots></div>
+          <form class="booking-request-form" data-booking-request-form>
+            <label>
+              <span>Full Name</span>
+              <input name="fullName" autocomplete="name" required />
+            </label>
+            <label>
+              <span>WhatsApp Number</span>
+              <div class="phone-field">
+                <select name="countryCode" aria-label="Country code" data-country-code>
+                  <option value="+233" selected>🇬🇭 +233</option>
+                  <option value="+234">🇳🇬 +234</option>
+                  <option value="+225">🇨🇮 +225</option>
+                  <option value="+44">🇬🇧 +44</option>
+                  <option value="+1">🇺🇸 +1</option>
+                  <option value="+1">🇨🇦 +1</option>
+                  <option value="+27">🇿🇦 +27</option>
+                  <option value="+254">🇰🇪 +254</option>
+                </select>
+                <input name="whatsapp" data-phone-input type="tel" inputmode="tel" autocomplete="tel" required />
+              </div>
+            </label>
+            <button class="button button--primary button--full" type="submit" data-request-session>
+              Request session
+            </button>
+          </form>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { createBookingRequest, listPublicCalendarDays, type CalendarDay } from '@/lib/adminData';
+  import { isFirebaseConfigured } from '@/lib/firebase';
+
+  const bookingWidget = document.querySelector('[data-booking-widget]');
+  const bookingMonth = document.querySelector('[data-booking-month]');
+  const bookingCalendar = document.querySelector('[data-booking-calendar]');
+  const bookingCalendarLoading = document.querySelector('[data-booking-calendar-loading]');
+  const bookingPrev = document.querySelector('[data-booking-prev]');
+  const bookingNext = document.querySelector('[data-booking-next]');
+  const bookingSlots = document.querySelector('[data-booking-slots]');
+  const selectedDate = document.querySelector('[data-selected-date]');
+  const requestSession = document.querySelector('[data-request-session]');
+  const bookingRequestForm = document.querySelector('[data-booking-request-form]');
+  const slotCardContent = document.querySelector('[data-slot-card-content]');
+  const bookingConfirmation = document.querySelector('[data-booking-confirmation]');
+  const bookingSuccessTitle = document.querySelector('[data-booking-success-title]');
+  const bookingSuccessCopy = document.querySelector('[data-booking-success-copy]');
+  const defaultTimes = ['09:00', '10:00', '11:00', '12:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
+  const calendarDays = new Map<string, CalendarDay>();
+  let currentMonth = new Date();
+  currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+  let activeDate = '';
+
+  function isoDate(date: Date) {
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0')
+    ].join('-');
+  }
+
+  function todayKey() {
+    return isoDate(new Date());
+  }
+
+  function isPastDate(date: string) {
+    return date < todayKey();
+  }
+
+  function formatDate(dateValue: string) {
+    const date = new Date(`${dateValue}T00:00:00`);
+    return date.toLocaleDateString('en', { weekday: 'long', month: 'long', day: 'numeric' });
+  }
+
+  function formatTime(time: string) {
+    const [hourValue, minute] = time.split(':');
+    const hour = Number(hourValue);
+    const period = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minute} ${period}`;
+  }
+
+  function formData(form: HTMLFormElement) {
+    return Object.fromEntries(new FormData(form).entries()) as Record<string, string>;
+  }
+
+  function formattedWhatsappNumber(rawNumber: string, countryCode = '+233') {
+    const trimmedNumber = rawNumber.trim();
+    const dialCode = countryCode.trim() || '+233';
+    const localNumber = trimmedNumber.replace(/^0+/, '').replace(/[^\d]/g, '');
+
+    return dialCode && localNumber ? `${dialCode}${localNumber}` : trimmedNumber;
+  }
+
+  function whatsappLink(data: Record<string, string>, date: string, slot: string) {
+    const message = [
+      'Hello Prophet Selasi Adrah, I would like to request a one-on-one consultation.',
+      '',
+      `Name: ${data.fullName}`,
+      `Preferred date: ${date}`,
+      `Preferred time: ${slot}`,
+      `WhatsApp number: ${formattedWhatsappNumber(data.whatsapp, data.countryCode)}`,
+      `Source: PSA Website`
+    ].join('\n');
+
+    const whatsappNumber = bookingWidget instanceof HTMLElement ? bookingWidget.dataset.whatsappNumber : '';
+    return `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
+  }
+
+  function monthDays(month: Date) {
+    const first = new Date(month.getFullYear(), month.getMonth(), 1);
+    const last = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+    const days = [];
+    for (let index = 0; index < first.getDay(); index += 1) days.push(null);
+    for (let day = 1; day <= last.getDate(); day += 1) days.push(new Date(month.getFullYear(), month.getMonth(), day));
+    return days;
+  }
+
+  function getDay(date: string): CalendarDay {
+    return calendarDays.get(date) ?? { date, status: 'available', times: defaultTimes };
+  }
+
+  function renderSlots(date: string) {
+    if (!(bookingSlots instanceof HTMLElement)) return;
+    const day = getDay(date);
+    const times = day.status === 'available' ? day.times : [];
+
+    bookingSlots.innerHTML = times.length
+      ? times
+          .map((time, index) => `
+            <button class="${index === 0 ? 'is-selected' : ''}" data-booking-slot="${time}" type="button">
+              <span>${formatTime(time)}</span>
+              <span aria-hidden="true">✓</span>
+            </button>
+          `)
+          .join('')
+      : '<p class="booking-empty">No available times for this date.</p>';
+  }
+
+  function clearDateSelection(message = 'Select a date') {
+    activeDate = '';
+    bookingWidget?.querySelectorAll('[data-booking-day]').forEach((button) => button.classList.remove('is-selected'));
+    if (selectedDate instanceof HTMLElement) selectedDate.textContent = message;
+    if (bookingSlots instanceof HTMLElement) bookingSlots.innerHTML = '';
+    if (slotCardContent instanceof HTMLElement) slotCardContent.hidden = true;
+  }
+
+  function selectDate(date: string) {
+    activeDate = date;
+    bookingWidget?.querySelectorAll('[data-booking-day]').forEach((button) => button.classList.remove('is-selected'));
+    bookingWidget?.querySelector(`[data-booking-day="${date}"]`)?.classList.add('is-selected');
+    if (selectedDate instanceof HTMLElement) selectedDate.textContent = formatDate(date);
+    if (slotCardContent instanceof HTMLElement) slotCardContent.hidden = false;
+    renderSlots(date);
+  }
+
+  function renderCalendar() {
+    if (!(bookingCalendar instanceof HTMLElement)) return;
+    if (bookingCalendarLoading instanceof HTMLElement) bookingCalendarLoading.hidden = true;
+    bookingCalendar.hidden = false;
+    if (bookingMonth instanceof HTMLElement) {
+      bookingMonth.textContent = currentMonth.toLocaleDateString('en', { month: 'long', year: 'numeric' });
+    }
+
+    bookingCalendar.innerHTML = monthDays(currentMonth)
+      .map((date) => {
+        if (!date) return '<span></span>';
+        const dateKey = isoDate(date);
+        const day = getDay(dateKey);
+        const isPast = isPastDate(dateKey);
+        const isBlocked = day.status === 'blocked';
+        const isAvailable = !isPast && !isBlocked;
+
+        return `
+          <button
+            class="${isAvailable ? 'is-available' : ''} ${isPast ? 'is-past' : ''} ${isBlocked ? 'is-blocked' : ''} ${dateKey === activeDate ? 'is-selected' : ''}"
+            data-booking-day="${dateKey}"
+            type="button"
+            ${isAvailable ? '' : 'disabled'}
+          >
+            ${date.getDate()}
+          </button>
+        `;
+      })
+      .join('');
+  }
+
+  function showNoAvailableDatesIfNeeded() {
+    const firstAvailable = monthDays(currentMonth)
+      .filter((date): date is Date => Boolean(date))
+      .map(isoDate)
+      .find((date) => !isPastDate(date) && getDay(date).status !== 'blocked');
+
+    if (firstAvailable) clearDateSelection();
+    else clearDateSelection('No available dates this month');
+  }
+
+  function refreshSelectionAfterCalendarUpdate() {
+    if (!activeDate) {
+      showNoAvailableDatesIfNeeded();
+      return;
+    }
+
+    const day = getDay(activeDate);
+    if (isPastDate(activeDate) || day.status === 'blocked') {
+      clearDateSelection();
+      return;
+    }
+
+    renderSlots(activeDate);
+  }
+
+  async function loadCalendar() {
+    renderCalendar();
+    showNoAvailableDatesIfNeeded();
+
+    if (!isFirebaseConfigured) {
+      return;
+    }
+
+    try {
+      const days = await listPublicCalendarDays();
+      calendarDays.clear();
+      days.forEach((day) => calendarDays.set(day.date, day));
+    } catch (error) {
+      console.error('Unable to load booking calendar', error);
+      calendarDays.clear();
+    }
+
+    renderCalendar();
+    refreshSelectionAfterCalendarUpdate();
+  }
+
+  if (bookingWidget instanceof HTMLElement) {
+    bookingWidget.addEventListener('click', (event) => {
+      const target = event.target instanceof Element ? event.target.closest('button') : null;
+      if (!(target instanceof HTMLButtonElement)) return;
+
+      if (target.dataset.bookingDay) {
+        selectDate(target.dataset.bookingDay);
+      }
+
+      if (target.dataset.bookingSlot) {
+        bookingWidget.querySelectorAll('[data-booking-slot]').forEach((button) => button.classList.remove('is-selected'));
+        target.classList.add('is-selected');
+      }
+    });
+  }
+
+  bookingRequestForm?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const selectedSlot = bookingWidget?.querySelector('[data-booking-slot].is-selected');
+    if (
+      !(bookingRequestForm instanceof HTMLFormElement) ||
+      !(requestSession instanceof HTMLButtonElement) ||
+      !(slotCardContent instanceof HTMLElement) ||
+      !(bookingConfirmation instanceof HTMLElement) ||
+      !(bookingSuccessTitle instanceof HTMLElement) ||
+      !(bookingSuccessCopy instanceof HTMLElement) ||
+      !(selectedDate instanceof HTMLElement) ||
+      !(selectedSlot instanceof HTMLElement)
+    ) return;
+    if (!bookingRequestForm.reportValidity()) return;
+
+    const data = formData(bookingRequestForm);
+    const selectedDateText = selectedDate.textContent ?? '';
+    const slot = selectedSlot.dataset.bookingSlot ? formatTime(selectedSlot.dataset.bookingSlot) : '';
+    const originalText = 'Request session';
+    const link = whatsappLink(data, selectedDateText, slot);
+    requestSession.disabled = true;
+    requestSession.textContent = 'Opening WhatsApp...';
+
+    if (isFirebaseConfigured) {
+      try {
+        void createBookingRequest({
+          date: selectedDateText,
+          slot,
+          fullName: data.fullName,
+          whatsapp: formattedWhatsappNumber(data.whatsapp, data.countryCode)
+        }).catch(() => {
+          console.error('Unable to save booking request');
+        });
+      } catch {
+        console.error('Unable to save booking request');
+      }
+    }
+
+    bookingSuccessTitle.textContent = 'Opening WhatsApp';
+    bookingSuccessCopy.textContent = 'Your request is ready. Send the prepared message in WhatsApp to complete it.';
+    slotCardContent.hidden = true;
+    bookingConfirmation.hidden = false;
+    window.location.href = link;
+
+    window.setTimeout(() => {
+      bookingWidget?.querySelectorAll('.is-selected').forEach((item) => item.classList.remove('is-selected'));
+      bookingRequestForm.reset();
+      clearDateSelection();
+      bookingConfirmation.hidden = true;
+      requestSession.disabled = false;
+      requestSession.textContent = originalText;
+    }, 4600);
+  });
+
+  bookingPrev?.addEventListener('click', () => {
+    currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
+    renderCalendar();
+    showNoAvailableDatesIfNeeded();
+  });
+
+  bookingNext?.addEventListener('click', () => {
+    currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+    renderCalendar();
+    showNoAvailableDatesIfNeeded();
+  });
+
+  loadCalendar();
+</script>

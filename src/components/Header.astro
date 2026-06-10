@@ -1,0 +1,66 @@
+---
+import { navItems, site } from '@/data/site';
+import SocialLinks from '@/components/SocialLinks.astro';
+---
+
+<header class="site-header" data-header>
+  <a class="brand" href="#top" aria-label={`${site.name} home`}>
+    <img src="/images/psa-logo.png" alt="" width="48" height="48" />
+    <span>{site.name}</span>
+  </a>
+
+  <nav class="desktop-nav" aria-label="Primary navigation">
+    {navItems.map((item) => <a href={item.href}>{item.label}</a>)}
+  </nav>
+
+  <button class="menu-button" type="button" aria-expanded="false" aria-controls="mobile-menu" data-menu-button>
+    <span class="sr-only">Open navigation menu</span>
+    <span></span>
+    <span></span>
+    <span></span>
+  </button>
+</header>
+
+<div class="menu-overlay" data-menu-overlay hidden></div>
+<aside class="mobile-menu" id="mobile-menu" aria-hidden="true" data-mobile-menu>
+  <div class="mobile-menu__top">
+    <img src="/images/psa-logo.png" alt="" width="72" height="72" />
+    <p>{site.shortName}</p>
+    <h2>{site.name}</h2>
+  </div>
+  <nav aria-label="Mobile navigation">
+    {navItems.map((item) => <a href={item.href} data-menu-link>{item.label}</a>)}
+  </nav>
+  <SocialLinks />
+</aside>
+
+<script>
+  const button = document.querySelector('[data-menu-button]');
+  const menu = document.querySelector('[data-mobile-menu]');
+  const overlay = document.querySelector('[data-menu-overlay]');
+  const links = document.querySelectorAll('[data-menu-link]');
+
+  function setMenu(open) {
+    if (!(button instanceof HTMLButtonElement) || !(menu instanceof HTMLElement) || !(overlay instanceof HTMLElement)) {
+      return;
+    }
+
+    button.setAttribute('aria-expanded', String(open));
+    menu.setAttribute('aria-hidden', String(!open));
+    menu.classList.toggle('is-open', open);
+    overlay.hidden = !open;
+    document.body.classList.toggle('menu-open', open);
+  }
+
+  button?.addEventListener('click', () => {
+    const isOpen = button.getAttribute('aria-expanded') === 'true';
+    setMenu(!isOpen);
+  });
+
+  overlay?.addEventListener('click', () => setMenu(false));
+  links.forEach((link) => link.addEventListener('click', () => setMenu(false)));
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') setMenu(false);
+  });
+</script>

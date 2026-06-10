@@ -1,0 +1,190 @@
+---
+import SectionHeading from '@/components/SectionHeading.astro';
+---
+
+<section class="gallery page-shell" id="gallery">
+  <SectionHeading eyebrow="Gallery" title="Moments from the ministry" align="center" />
+  <div class="gallery__grid" data-gallery-grid>
+    <div class="gallery__empty" data-gallery-empty>
+      <span aria-hidden="true"></span>
+      <h3>Gallery coming soon</h3>
+      <p>New ministry moments will appear here.</p>
+    </div>
+  </div>
+  <nav class="gallery-pagination" data-gallery-pagination aria-label="Gallery pagination" hidden>
+    <button type="button" data-gallery-prev aria-label="Previous gallery page">Previous</button>
+    <span data-gallery-page></span>
+    <button type="button" data-gallery-next aria-label="Next gallery page">Next</button>
+  </nav>
+</section>
+
+<div class="lightbox" data-lightbox hidden>
+  <button class="lightbox__close" type="button" data-lightbox-close aria-label="Close image preview">×</button>
+  <img src="" alt="" data-lightbox-image />
+</div>
+
+<script>
+  import { listPublicGalleryItems } from '@/lib/adminData';
+  import { isFirebaseConfigured } from '@/lib/firebase';
+
+  const galleryGrid = document.querySelector('[data-gallery-grid]');
+  const lightbox = document.querySelector('[data-lightbox]');
+  const lightboxImage = document.querySelector('[data-lightbox-image]');
+  const closeButton = document.querySelector('[data-lightbox-close]');
+  const galleryPagination = document.querySelector('[data-gallery-pagination]');
+  const galleryPrev = document.querySelector('[data-gallery-prev]');
+  const galleryNext = document.querySelector('[data-gallery-next]');
+  const galleryPage = document.querySelector('[data-gallery-page]');
+  let galleryItems: Awaited<ReturnType<typeof listPublicGalleryItems>> = [];
+  let currentGalleryPage = 1;
+
+  function escapeHtml(value: unknown) {
+    return String(value ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  async function loadGallery() {
+    if (!(galleryGrid instanceof HTMLElement)) return;
+
+    if (!isFirebaseConfigured) {
+      renderEmptyGallery();
+      return;
+    }
+
+    try {
+      const items = await listPublicGalleryItems();
+      if (!items.length) {
+        renderEmptyGallery();
+        return;
+      }
+
+      galleryItems = items;
+      currentGalleryPage = 1;
+      renderGalleryPage();
+    } catch (error) {
+      console.error('Unable to load gallery images', error);
+      renderEmptyGallery();
+    }
+  }
+
+  function galleryItemsPerPage() {
+    return window.matchMedia('(min-width: 880px)').matches ? 6 : 9;
+  }
+
+  function totalGalleryPages() {
+    return Math.max(1, Math.ceil(galleryItems.length / galleryItemsPerPage()));
+  }
+
+  function renderGalleryPage() {
+    if (!(galleryGrid instanceof HTMLElement)) return;
+    if (!galleryItems.length) {
+      renderEmptyGallery();
+      return;
+    }
+
+    const perPage = galleryItemsPerPage();
+    const totalPages = totalGalleryPages();
+    currentGalleryPage = Math.min(currentGalleryPage, totalPages);
+    const start = (currentGalleryPage - 1) * perPage;
+    const visibleItems = galleryItems.slice(start, start + perPage);
+
+    galleryGrid.innerHTML = visibleItems.map((item, index) => `
+        <figure>
+          <button
+            class="gallery__button"
+            type="button"
+            data-lightbox-trigger
+            data-lightbox-src="${escapeHtml(item.imageUrl)}"
+            data-lightbox-alt="${escapeHtml(item.altText)}"
+            aria-label="Open gallery image ${start + index + 1}"
+          >
+            <img src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.altText)}" loading="lazy" />
+          </button>
+          <figcaption>${escapeHtml(item.caption)}</figcaption>
+        </figure>
+      `).join('');
+
+    if (galleryPagination instanceof HTMLElement) galleryPagination.hidden = totalPages <= 1;
+    if (galleryPage instanceof HTMLElement) galleryPage.textContent = `Page ${currentGalleryPage} of ${totalPages}`;
+    if (galleryPrev instanceof HTMLButtonElement) galleryPrev.disabled = currentGalleryPage === 1;
+    if (galleryNext instanceof HTMLButtonElement) galleryNext.disabled = currentGalleryPage === totalPages;
+  }
+
+  function changeGalleryPage(direction: number) {
+    const nextPage = currentGalleryPage + direction;
+    if (nextPage < 1 || nextPage > totalGalleryPages()) return;
+    currentGalleryPage = nextPage;
+    renderGalleryPage();
+    galleryGrid?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function handleGalleryResize() {
+    if (!galleryItems.length) return;
+    currentGalleryPage = 1;
+    renderGalleryPage();
+  }
+
+  galleryPrev?.addEventListener('click', () => {
+    changeGalleryPage(-1);
+  });
+
+  galleryNext?.addEventListener('click', () => {
+    changeGalleryPage(1);
+  });
+
+  window.addEventListener('resize', () => {
+    window.clearTimeout(Number(galleryGrid instanceof HTMLElement ? galleryGrid.dataset.resizeTimer : 0));
+    const timer = window.setTimeout(handleGalleryResize, 160);
+    if (galleryGrid instanceof HTMLElement) galleryGrid.dataset.resizeTimer = String(timer);
+  });
+
+  function hideGalleryPagination() {
+    if (galleryPagination instanceof HTMLElement) galleryPagination.hidden = true;
+  }
+
+  function renderEmptyGallery() {
+    if (!(galleryGrid instanceof HTMLElement)) return;
+    galleryItems = [];
+    hideGalleryPagination();
+
+    galleryGrid.innerHTML = `
+      <div class="gallery__empty">
+        <span aria-hidden="true"></span>
+        <h3>Gallery coming soon</h3>
+        <p>New ministry moments will appear here.</p>
+      </div>
+    `;
+  }
+
+  function closeLightbox() {
+    if (!(lightbox instanceof HTMLElement) || !(lightboxImage instanceof HTMLImageElement)) return;
+    lightbox.hidden = true;
+    lightboxImage.src = '';
+    lightboxImage.alt = '';
+    document.body.classList.remove('lightbox-open');
+  }
+
+  document.addEventListener('click', (event) => {
+    const trigger = event.target instanceof Element ? event.target.closest('[data-lightbox-trigger]') : null;
+    if (!(trigger instanceof HTMLElement) || !(lightbox instanceof HTMLElement) || !(lightboxImage instanceof HTMLImageElement)) return;
+    lightboxImage.src = trigger.dataset.lightboxSrc ?? '';
+    lightboxImage.alt = trigger.dataset.lightboxAlt ?? '';
+    lightbox.hidden = false;
+    document.body.classList.add('lightbox-open');
+  });
+
+  closeButton?.addEventListener('click', closeLightbox);
+  lightbox?.addEventListener('click', (event) => {
+    if (event.target === lightbox) closeLightbox();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeLightbox();
+  });
+
+  void loadGallery();
+</script>

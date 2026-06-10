@@ -1,0 +1,77 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { site } from '@/data/site';
+---
+
+<BaseLayout title={`Admin Login | ${site.name}`} description="Sign in to manage the ministry website.">
+  <main class="admin-page">
+    <section class="admin-auth">
+      <div>
+        <p class="eyebrow">Admin</p>
+        <h1>Website Control Room</h1>
+        <p>Sign in to manage events, calendar availability, and booking requests.</p>
+      </div>
+
+      <form class="admin-form" data-login-form>
+        <label>
+          <span>Email</span>
+          <input type="email" name="email" autocomplete="email" required />
+        </label>
+        <label>
+          <span>Password</span>
+          <input type="password" name="password" autocomplete="current-password" required />
+        </label>
+        <button class="button button--primary button--full" type="submit" data-login-button>Sign In</button>
+        <p class="admin-note" data-login-note></p>
+      </form>
+    </section>
+  </main>
+</BaseLayout>
+
+<script>
+  import { onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
+  import { getFirebaseAuth, isFirebaseConfigured } from '@/lib/firebase';
+
+  const loginForm = document.querySelector('[data-login-form]');
+  const loginNote = document.querySelector('[data-login-note]');
+  const loginButton = document.querySelector('[data-login-button]');
+
+  function setNote(message: string) {
+    if (loginNote instanceof HTMLElement) loginNote.textContent = message;
+  }
+
+  function formData(form: HTMLFormElement) {
+    return Object.fromEntries(new FormData(form).entries()) as Record<string, string>;
+  }
+
+  if (!isFirebaseConfigured) {
+    setNote('Firebase is not configured yet. Add your project values to .env.local.');
+  } else {
+    const auth = getFirebaseAuth();
+
+    if (auth) {
+      onAuthStateChanged(auth, (user) => {
+        if (user) window.location.replace('/admin');
+      });
+
+      loginForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!(loginForm instanceof HTMLFormElement) || !(loginButton instanceof HTMLButtonElement)) return;
+        const data = formData(loginForm);
+        loginButton.disabled = true;
+        loginButton.textContent = 'Signing In...';
+        setNote('');
+
+        try {
+          await signInWithEmailAndPassword(auth, data.email, data.password);
+          window.location.replace('/admin');
+        } catch {
+          setNote('Unable to sign in. Check the email and password.');
+        } finally {
+          loginButton.disabled = false;
+          loginButton.textContent = 'Sign In';
+        }
+      });
+    }
+  }
+</script>

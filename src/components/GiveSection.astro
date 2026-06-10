@@ -1,0 +1,67 @@
+---
+import { donationAmounts } from '@/data/site';
+---
+
+<section class="give section-band" id="give">
+  <div class="give__card page-shell" data-donation-widget>
+    <p class="eyebrow">Stewardship</p>
+    <h2>Support the vision</h2>
+    <p>
+      Your giving helps extend prophetic teaching, prayer gatherings,
+      leadership sessions, and ministry care to more people.
+    </p>
+    <div class="amount-grid" aria-label="Donation amounts">
+      {donationAmounts.map((amount, index) => (
+        <button class:list={[index === 1 && 'is-selected']} data-amount={amount} type="button">
+          GHS {amount}
+        </button>
+      ))}
+    </div>
+    <label class="custom-amount">
+      <span>Other Amount</span>
+      <input data-custom-amount type="text" inputmode="numeric" placeholder="Enter amount" />
+    </label>
+    <button class="button button--primary button--full" type="button" data-give-now>
+      Give GHS 100
+    </button>
+    <p class="form-note" data-donation-note>Select an amount to prepare your giving.</p>
+  </div>
+</section>
+
+<script>
+  const donationWidget = document.querySelector('[data-donation-widget]');
+  const customAmount = document.querySelector('[data-custom-amount]');
+  const giveNow = document.querySelector('[data-give-now]');
+  const donationNote = document.querySelector('[data-donation-note]');
+
+  function setDonationAmount(amount) {
+    if (giveNow instanceof HTMLButtonElement) {
+      giveNow.textContent = amount ? `Give GHS ${amount}` : 'Give Now';
+    }
+  }
+
+  donationWidget?.addEventListener('click', (event) => {
+    const button = event.target instanceof Element ? event.target.closest('[data-amount]') : null;
+    if (!(button instanceof HTMLButtonElement)) return;
+
+    donationWidget.querySelectorAll('[data-amount]').forEach((item) => item.classList.remove('is-selected'));
+    button.classList.add('is-selected');
+
+    if (customAmount instanceof HTMLInputElement) customAmount.value = '';
+    setDonationAmount(button.dataset.amount ?? '');
+  });
+
+  customAmount?.addEventListener('input', () => {
+    if (!(customAmount instanceof HTMLInputElement)) return;
+    const amount = customAmount.value.replace(/[^\d]/g, '');
+    customAmount.value = amount;
+    donationWidget?.querySelectorAll('[data-amount]').forEach((item) => item.classList.remove('is-selected'));
+    setDonationAmount(amount);
+  });
+
+  giveNow?.addEventListener('click', () => {
+    if (donationNote instanceof HTMLElement) {
+      donationNote.textContent = 'Donation checkout will open here once giving is activated.';
+    }
+  });
+</script>

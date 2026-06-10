@@ -1,0 +1,26 @@
+---
+import { navItems, site } from '@/data/site';
+import SocialLinks from '@/components/SocialLinks.astro';
+---
+
+<footer class="footer" id="contact">
+  <div class="footer__brand">
+    <img src="/images/psa-logo.png" alt="" width="72" height="72" />
+    <div>
+      <p>{site.shortName}</p>
+      <h2>{site.name}</h2>
+    </div>
+  </div>
+
+  <div class="footer__contact">
+    <a href={`mailto:${site.email}`}>{site.email}</a>
+    <a href={`tel:${site.phone.replaceAll(' ', '')}`}>{site.phone}</a>
+    <span>{site.location}</span>
+  </div>
+
+  <nav class="footer__nav" aria-label="Footer navigation">
+    {navItems.map((item) => <a href={item.href}>{item.label}</a>)}
+  </nav>
+
+  <SocialLinks />
+</footer>

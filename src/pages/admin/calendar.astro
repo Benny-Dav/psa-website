@@ -1,0 +1,402 @@
+---
+import AdminShell from '@/components/AdminShell.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { site } from '@/data/site';
+---
+
+<BaseLayout title={`Calendar Admin | ${site.name}`} description="Manage booking calendar availability.">
+  <AdminShell
+    active="calendar"
+    eyebrow="Calendar"
+    title="Consultation Calendar"
+    description="Block unavailable dates and guide preferred consultation times."
+  >
+    <section class="admin-calendar-workspace">
+      <section class="admin-panel admin-calendar-board">
+        <div class="admin-calendar-toolbar">
+          <button class="admin-icon-button" type="button" data-month-prev aria-label="Previous month" title="Previous month">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15.4 5-7 7 7 7 1.4-1.4L11.2 12l5.6-5.6L15.4 5Z"></path></svg>
+          </button>
+          <div>
+            <p class="eyebrow">Month View</p>
+            <h2 data-month-title></h2>
+          </div>
+          <button class="admin-icon-button" type="button" data-month-next aria-label="Next month" title="Next month">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8.6 19 7-7-7-7-1.4 1.4 5.6 5.6-5.6 5.6L8.6 19Z"></path></svg>
+          </button>
+        </div>
+
+        <div class="admin-calendar-actions">
+          <button class="button button--primary" type="button" data-block-mode>Block</button>
+          <button class="button button--secondary" type="button" data-clear-selection>Clear</button>
+        </div>
+        <p class="admin-calendar-mode-note" data-calendar-mode-note>Click available dates to set slots.</p>
+
+        <div class="admin-calendar-weekdays" aria-hidden="true">
+          <span>Sun</span>
+          <span>Mon</span>
+          <span>Tue</span>
+          <span>Wed</span>
+          <span>Thu</span>
+          <span>Fri</span>
+          <span>Sat</span>
+        </div>
+
+        <div class="admin-calendar-grid-wrap" data-calendar-grid-wrap>
+          <div class="admin-calendar-loading" data-calendar-loading>
+            <span aria-hidden="true"></span>
+            <p>Loading calendar</p>
+          </div>
+          <div class="admin-month-grid" data-month-grid hidden></div>
+        </div>
+
+        <div class="admin-calendar-legend">
+          <span><i class="is-available"></i>Available</span>
+          <span><i class="is-blocked"></i>Blocked</span>
+        </div>
+      </section>
+
+      <aside class="admin-calendar-side">
+        <section class="admin-panel">
+          <div class="admin-panel__heading">
+            <h2>Selected date</h2>
+            <span class="admin-save-state" data-time-state></span>
+          </div>
+
+          <p class="admin-selection-summary" data-selection-summary>Tap Block, then select dates to block them.</p>
+          <button class="button button--secondary button--full" type="button" data-unblock-date hidden>Unblock Selected Date</button>
+          <div class="admin-time-block" data-time-panel hidden>
+            <div class="admin-time-block__head">
+              <p class="admin-helper-text">Time slots</p>
+              <button class="admin-time-block-toggle" type="button" data-time-block-mode>Block</button>
+            </div>
+            <div class="admin-time-chip-grid" data-time-chip-grid></div>
+          </div>
+          <button class="button button--primary button--full" type="button" data-save-times>Save</button>
+          <p class="admin-note" data-calendar-note></p>
+        </section>
+
+        <section class="admin-panel admin-preview-panel">
+          <p class="eyebrow">Public Preview</p>
+          <h2 data-preview-title>Flexible requests</h2>
+          <p data-preview-copy>Visitors will pick a preferred date and time, then continue to WhatsApp for final confirmation.</p>
+        </section>
+      </aside>
+    </section>
+  </AdminShell>
+</BaseLayout>
+
+<script>
+  import { listCalendarDays, saveCalendarDay, type CalendarDay } from '@/lib/adminData';
+  import { isFirebaseConfigured } from '@/lib/firebase';
+
+  const monthTitle = document.querySelector('[data-month-title]');
+  const monthGrid = document.querySelector('[data-month-grid]');
+  const calendarLoading = document.querySelector('[data-calendar-loading]');
+  const monthPrev = document.querySelector('[data-month-prev]');
+  const monthNext = document.querySelector('[data-month-next]');
+  const calendarModeNote = document.querySelector('[data-calendar-mode-note]');
+  const selectionSummary = document.querySelector('[data-selection-summary]');
+  const clearSelection = document.querySelector('[data-clear-selection]');
+  const blockModeButton = document.querySelector('[data-block-mode]');
+  const unblockDate = document.querySelector('[data-unblock-date]');
+  const calendarNote = document.querySelector('[data-calendar-note]');
+  const timePanel = document.querySelector('[data-time-panel]');
+  const timeBlockModeButton = document.querySelector('[data-time-block-mode]');
+  const timeChipGrid = document.querySelector('[data-time-chip-grid]');
+  const saveTimes = document.querySelector('[data-save-times]');
+  const timeState = document.querySelector('[data-time-state]');
+
+  const defaultTimes = ['09:00', '10:00', '11:00', '12:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
+  const dayMap = new Map<string, CalendarDay>();
+  const selectedDates = new Set<string>();
+  const dirtyDates = new Set<string>();
+  let isBlockMode = false;
+  let isTimeBlockMode = false;
+  let currentMonth = new Date();
+  currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+
+  function setNote(message: string) {
+    if (calendarNote instanceof HTMLElement) calendarNote.textContent = message;
+  }
+
+  function isoDate(date: Date) {
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0')
+    ].join('-');
+  }
+
+  function formatDate(dateValue: string) {
+    const date = new Date(`${dateValue}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return dateValue;
+    return date.toLocaleDateString('en', { month: 'short', day: 'numeric' });
+  }
+
+  function formatTime(time: string) {
+    const [hourValue, minute] = time.split(':');
+    const hour = Number(hourValue);
+    const period = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minute} ${period}`;
+  }
+
+  function todayKey() {
+    return isoDate(new Date());
+  }
+
+  function isPastDate(date: string) {
+    return date < todayKey();
+  }
+
+  function monthDays(month: Date) {
+    const first = new Date(month.getFullYear(), month.getMonth(), 1);
+    const last = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+    const days = [];
+
+    for (let index = 0; index < first.getDay(); index += 1) {
+      days.push(null);
+    }
+
+    for (let day = 1; day <= last.getDate(); day += 1) {
+      days.push(new Date(month.getFullYear(), month.getMonth(), day));
+    }
+
+    return days;
+  }
+
+  function getDay(date: string): CalendarDay {
+    return dayMap.get(date) ?? { date, status: 'available', times: defaultTimes };
+  }
+
+  function renderSelection() {
+    const count = selectedDates.size;
+    const selectedDate = [...selectedDates][0];
+    const selectedDay = selectedDate ? getDay(selectedDate) : null;
+
+    if (calendarModeNote instanceof HTMLElement) {
+      calendarModeNote.textContent = isBlockMode ? 'Select dates to block.' : 'Click available dates to set slots.';
+    }
+
+    if (selectionSummary instanceof HTMLElement) {
+      if (isBlockMode) {
+        selectionSummary.textContent = 'Block mode active.';
+      } else if (count && selectedDay?.status === 'blocked') {
+        selectionSummary.textContent = `${formatDate(selectedDate)} is blocked.`;
+      } else if (count) {
+        selectionSummary.textContent = formatDate(selectedDate);
+      } else {
+        selectionSummary.textContent = 'No date selected.';
+      }
+    }
+
+    if (unblockDate instanceof HTMLElement) {
+      unblockDate.hidden = !(count === 1 && selectedDay?.status === 'blocked' && !isBlockMode);
+    }
+
+    if (timePanel instanceof HTMLElement) {
+      timePanel.hidden = !(count === 1 && selectedDay?.status === 'available' && !isBlockMode);
+    }
+
+    renderTimeChips();
+  }
+
+  function renderCalendar() {
+    if (!(monthGrid instanceof HTMLElement)) return;
+    if (calendarLoading instanceof HTMLElement) calendarLoading.hidden = true;
+    monthGrid.hidden = false;
+    if (monthTitle instanceof HTMLElement) {
+      monthTitle.textContent = currentMonth.toLocaleDateString('en', { month: 'long', year: 'numeric' });
+    }
+
+    monthGrid.innerHTML = monthDays(currentMonth)
+      .map((date) => {
+        if (!date) return '<span class="admin-month-day admin-month-day--empty"></span>';
+
+        const dateKey = isoDate(date);
+        const day = getDay(dateKey);
+        const isSelected = selectedDates.has(dateKey);
+        const hasCustomTimes = day.status === 'available' && day.times.join(',') !== defaultTimes.join(',');
+        const blockedTimeCount = defaultTimes.length - day.times.length;
+        const hasUnsavedChanges = dirtyDates.has(dateKey);
+        const isPast = isPastDate(dateKey);
+
+        return `
+          <button
+            class="admin-month-day ${isPast ? 'is-past' : day.status === 'blocked' ? 'is-blocked' : 'is-available'} ${isSelected ? 'is-selected' : ''} ${hasCustomTimes ? 'has-custom' : ''} ${hasUnsavedChanges ? 'has-unsaved' : ''}"
+            type="button"
+            data-date="${dateKey}"
+            aria-pressed="${isSelected}"
+            ${isPast ? 'disabled' : ''}
+          >
+            <strong>${date.getDate()}</strong>
+            <span>${isPast ? 'Past' : day.status === 'blocked' ? 'Blocked' : hasCustomTimes ? `${blockedTimeCount} blocked` : 'Available'}</span>
+          </button>
+        `;
+      })
+      .join('');
+
+    renderSelection();
+  }
+
+  function renderTimeChips() {
+    if (!(timeChipGrid instanceof HTMLElement)) return;
+    const selectedDate = [...selectedDates][0];
+    const selectedDay = selectedDate ? getDay(selectedDate) : null;
+    const availableTimes = new Set(selectedDay?.status === 'available' ? selectedDay.times : defaultTimes);
+
+    timeChipGrid.innerHTML = defaultTimes
+      .map((time) => {
+        const isBlocked = selectedDay?.status === 'available' ? !availableTimes.has(time) : false;
+        return `<button class="${isBlocked ? 'is-blocked' : 'is-available'}" type="button" data-time="${time}">${formatTime(time)}</button>`;
+      })
+      .join('');
+  }
+
+  async function loadDays() {
+    if (!isFirebaseConfigured) {
+      setNote('Firebase is not configured yet.');
+      renderCalendar();
+      return;
+    }
+
+    try {
+      const days = await listCalendarDays();
+      dayMap.clear();
+      days.forEach((day) => dayMap.set(day.date, day));
+      renderCalendar();
+    } catch (error) {
+      console.error(error);
+      setNote('Unable to load calendar availability. Check Firebase permissions.');
+      renderCalendar();
+    }
+  }
+
+  function stageDay(day: CalendarDay, message: string) {
+    dayMap.set(day.date, day);
+    dirtyDates.add(day.date);
+    setNote(`${message} Click Save to apply.`);
+    renderCalendar();
+  }
+
+  async function saveCalendarChanges() {
+    if (!dirtyDates.size) {
+      setNote('No changes to save.');
+      return;
+    }
+
+    setNote('Saving...');
+    if (timeState instanceof HTMLElement) timeState.textContent = 'Saving...';
+
+    try {
+      await Promise.all([...dirtyDates].map((date) => saveCalendarDay(getDay(date))));
+      dirtyDates.clear();
+      setNote('Calendar saved.');
+      if (timeState instanceof HTMLElement) {
+        timeState.textContent = 'Saved';
+        window.setTimeout(() => {
+          timeState.textContent = '';
+        }, 1200);
+      }
+      renderCalendar();
+    } catch (error) {
+      console.error(error);
+      setNote('Could not save calendar changes. Check Firebase permissions.');
+      if (timeState instanceof HTMLElement) timeState.textContent = '';
+    }
+  }
+
+  function setBlockMode(active: boolean) {
+    isBlockMode = active;
+    isTimeBlockMode = false;
+    blockModeButton?.classList.toggle('is-active', isBlockMode);
+    timeBlockModeButton?.classList.remove('is-active');
+    selectedDates.clear();
+    renderCalendar();
+  }
+
+  monthGrid?.addEventListener('click', (event) => {
+    const button = event.target instanceof Element ? event.target.closest('[data-date]') : null;
+    if (!(button instanceof HTMLElement)) return;
+
+    const date = button.dataset.date;
+    if (!date) return;
+    if (isPastDate(date)) return;
+
+    if (isBlockMode) {
+      const existing = getDay(date);
+      const nextStatus = existing.status === 'blocked' ? 'available' : 'blocked';
+      const nextDay: CalendarDay = {
+        date,
+        status: nextStatus,
+        times: nextStatus === 'blocked' ? [] : defaultTimes
+      };
+
+      stageDay(nextDay, nextStatus === 'blocked' ? `${formatDate(date)} blocked.` : `${formatDate(date)} unblocked.`);
+      return;
+    }
+
+    selectedDates.clear();
+    selectedDates.add(date);
+    isTimeBlockMode = false;
+    timeBlockModeButton?.classList.remove('is-active');
+
+    renderCalendar();
+  });
+
+  monthPrev?.addEventListener('click', () => {
+    currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
+    selectedDates.clear();
+    renderCalendar();
+  });
+
+  monthNext?.addEventListener('click', () => {
+    currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+    selectedDates.clear();
+    renderCalendar();
+  });
+
+  clearSelection?.addEventListener('click', () => {
+    selectedDates.clear();
+    setBlockMode(false);
+    renderCalendar();
+  });
+
+  blockModeButton?.addEventListener('click', () => setBlockMode(!isBlockMode));
+
+  unblockDate?.addEventListener('click', () => {
+    const selectedDate = [...selectedDates][0];
+    if (!selectedDate) return;
+    stageDay({ date: selectedDate, status: 'available', times: defaultTimes }, `${formatDate(selectedDate)} unblocked.`);
+  });
+
+  timeBlockModeButton?.addEventListener('click', () => {
+    isTimeBlockMode = !isTimeBlockMode;
+    timeBlockModeButton.classList.toggle('is-active', isTimeBlockMode);
+    setNote(isTimeBlockMode ? 'Select time slots to block.' : '');
+  });
+
+  timeChipGrid?.addEventListener('click', (event) => {
+    const button = event.target instanceof Element ? event.target.closest('[data-time]') : null;
+    if (!(button instanceof HTMLElement)) return;
+    const selectedDate = [...selectedDates][0];
+    const time = button.dataset.time;
+    if (!selectedDate || !time || !isTimeBlockMode) return;
+
+    const selectedDay = getDay(selectedDate);
+    const availableTimes = new Set(selectedDay.times);
+    if (availableTimes.has(time)) availableTimes.delete(time);
+    else availableTimes.add(time);
+
+    stageDay(
+      { date: selectedDate, status: 'available', times: defaultTimes.filter((item) => availableTimes.has(item)) },
+      'Time slots updated.'
+    );
+  });
+
+  saveTimes?.addEventListener('click', saveCalendarChanges);
+
+  renderCalendar();
+  loadDays();
+</script>

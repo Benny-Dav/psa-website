@@ -1,0 +1,78 @@
+---
+import AdminShell from '@/components/AdminShell.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { site } from '@/data/site';
+---
+
+<BaseLayout title={`Admin Dashboard | ${site.name}`} description="Admin dashboard overview.">
+  <AdminShell
+    active="dashboard"
+    eyebrow="Dashboard"
+    title="Welcome back"
+    description="A simple overview of appointments, events, and ministry updates."
+  >
+    <section class="admin-metrics" aria-label="Dashboard overview">
+      <a class="admin-metric-card" href="/admin/bookings">
+        <span>New Appointments</span>
+        <strong data-dashboard-metric="bookings">--</strong>
+      </a>
+      <a class="admin-metric-card" href="/admin/events">
+        <span>Published Events</span>
+        <strong data-dashboard-metric="events">--</strong>
+      </a>
+    </section>
+
+    <p class="admin-note" data-dashboard-note></p>
+
+    <section class="admin-quick-actions">
+      <a href="/admin/events">Events</a>
+      <a href="/admin/calendar">Calendar</a>
+      <a href="/admin/bookings">Bookings</a>
+      <a href="/admin/gallery">Gallery</a>
+    </section>
+  </AdminShell>
+</BaseLayout>
+
+<script>
+  import { countBookingRequests, countPublishedEvents } from '@/lib/adminData';
+  import { isFirebaseConfigured } from '@/lib/firebase';
+
+  const dashboardNote = document.querySelector('[data-dashboard-note]');
+  const bookingMetric = document.querySelector('[data-dashboard-metric="bookings"]');
+  const eventMetric = document.querySelector('[data-dashboard-metric="events"]');
+
+  function setMetric(element: Element | null, value: number | string) {
+    if (element instanceof HTMLElement) element.textContent = String(value);
+  }
+
+  function setNote(message: string) {
+    if (dashboardNote instanceof HTMLElement) dashboardNote.textContent = message;
+  }
+
+  async function loadDashboardMetrics() {
+    if (!isFirebaseConfigured) {
+      setMetric(bookingMetric, 0);
+      setMetric(eventMetric, 0);
+      setNote('Firebase is not configured yet. Add .env.local values before viewing live dashboard numbers.');
+      return;
+    }
+
+    try {
+      const [bookingCount, eventCount] = await Promise.all([
+        countBookingRequests(),
+        countPublishedEvents()
+      ]);
+
+      setMetric(bookingMetric, bookingCount);
+      setMetric(eventMetric, eventCount);
+      setNote('');
+    } catch (error) {
+      console.error(error);
+      setMetric(bookingMetric, '--');
+      setMetric(eventMetric, '--');
+      setNote('Unable to load live dashboard numbers. Check Firebase permissions.');
+    }
+  }
+
+  void loadDashboardMetrics();
+</script>

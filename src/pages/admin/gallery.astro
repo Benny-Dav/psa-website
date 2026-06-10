@@ -1,0 +1,210 @@
+---
+import AdminShell from '@/components/AdminShell.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { site } from '@/data/site';
+---
+
+<BaseLayout title={`Gallery Admin | ${site.name}`} description="Manage gallery images.">
+  <AdminShell active="gallery" eyebrow="Gallery" title="Gallery Manager" description="Add and remove images shown on the public gallery.">
+    <section class="admin-module-grid">
+      <section class="admin-panel">
+        <div class="admin-panel__heading">
+          <h2>Add image</h2>
+        </div>
+
+        <form class="admin-form" data-gallery-form>
+          <label>
+            <span>Image</span>
+            <input name="image" type="file" accept="image/png,image/jpeg,image/webp" required />
+          </label>
+          <button class="button button--primary button--full" type="submit" data-gallery-submit>Upload Image</button>
+          <p class="admin-note" data-gallery-note></p>
+        </form>
+      </section>
+
+      <section class="admin-panel">
+        <div class="admin-panel__heading">
+          <h2>Gallery images</h2>
+          <button class="admin-icon-button" type="button" data-gallery-refresh aria-label="Refresh gallery images" title="Refresh images">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M17.7 6.3A8 8 0 1 0 20 12h-2a6 6 0 1 1-1.8-4.2L13 11h8V3l-3.3 3.3Z"></path></svg>
+          </button>
+        </div>
+
+        <div class="admin-gallery-list" data-gallery-list>
+          <p class="admin-empty">Loading gallery images...</p>
+        </div>
+      </section>
+    </section>
+  </AdminShell>
+</BaseLayout>
+
+<script>
+  import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+  import { createGalleryItem, deleteGalleryItem, listGalleryItems, type GalleryItem } from '@/lib/adminData';
+  import { getFirebaseStorage, isFirebaseConfigured } from '@/lib/firebase';
+
+  const galleryForm = document.querySelector('[data-gallery-form]');
+  const gallerySubmit = document.querySelector('[data-gallery-submit]');
+  const galleryNote = document.querySelector('[data-gallery-note]');
+  const galleryList = document.querySelector('[data-gallery-list]');
+  const galleryRefresh = document.querySelector('[data-gallery-refresh]');
+
+  function setNote(message: string) {
+    if (galleryNote instanceof HTMLElement) galleryNote.textContent = message;
+  }
+
+  function escapeHtml(value: unknown) {
+    return String(value ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  function errorMessage(error: unknown, fallback: string) {
+    const errorWithCode = error as { code?: string; message?: string };
+    if (errorWithCode?.code) return `${fallback} (${errorWithCode.code})`;
+    if (errorWithCode?.message) return `${fallback} (${errorWithCode.message})`;
+    return fallback;
+  }
+
+  function formData(form: HTMLFormElement) {
+    return Object.fromEntries(new FormData(form).entries()) as Record<string, FormDataEntryValue>;
+  }
+
+  function fileExtension(file: File) {
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (extension && ['jpg', 'jpeg', 'png', 'webp'].includes(extension)) return extension;
+    if (file.type === 'image/png') return 'png';
+    if (file.type === 'image/webp') return 'webp';
+    return 'jpg';
+  }
+
+  function imageLabel(file: File) {
+    const name = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ').trim();
+    return name || 'Gallery image';
+  }
+
+  function renderGallery(items: GalleryItem[]) {
+    if (!(galleryList instanceof HTMLElement)) return;
+
+    galleryList.dataset.payload = JSON.stringify(items);
+    galleryList.innerHTML = items.length
+      ? items.map((item) => `
+        <article class="admin-gallery-card">
+          <img src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.altText)}" loading="lazy" />
+          <div>
+            <strong>${escapeHtml(item.caption)}</strong>
+            <p>${escapeHtml(item.altText)}</p>
+          </div>
+          <button type="button" data-delete-gallery="${escapeHtml(item.id)}" aria-label="Delete ${escapeHtml(item.caption)}" title="Delete">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-3 6h12l-1 12H7L6 9Zm4 2v8h2v-8h-2Zm4 0v8h2v-8h-2Z"></path></svg>
+          </button>
+        </article>
+      `).join('')
+      : '<p class="admin-empty">No gallery images yet. Upload the first image using the form.</p>';
+  }
+
+  async function refreshGallery() {
+    if (!(galleryList instanceof HTMLElement)) return;
+
+    if (!isFirebaseConfigured) {
+      galleryList.innerHTML = '<p class="admin-empty">Firebase is not configured yet. Add .env.local values before managing gallery images.</p>';
+      return;
+    }
+
+    galleryList.innerHTML = '<p class="admin-empty">Loading gallery images...</p>';
+
+    try {
+      renderGallery(await listGalleryItems());
+    } catch (error) {
+      console.error(error);
+      galleryList.innerHTML = `<p class="admin-empty">${escapeHtml(errorMessage(error, 'Unable to load gallery images. Check Firebase permissions.'))}</p>`;
+    }
+  }
+
+  galleryForm?.addEventListener('submit', async (submitEvent) => {
+    submitEvent.preventDefault();
+    if (!(galleryForm instanceof HTMLFormElement) || !(gallerySubmit instanceof HTMLButtonElement)) return;
+    if (!galleryForm.reportValidity()) return;
+
+    const storage = getFirebaseStorage();
+    if (!storage) {
+      setNote('Firebase Storage is not configured.');
+      return;
+    }
+
+    const data = formData(galleryForm);
+    const image = data.image;
+    if (!(image instanceof File) || !image.size) {
+      setNote('Choose an image to upload.');
+      return;
+    }
+
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(image.type)) {
+      setNote('Upload a JPG, PNG, or WebP image.');
+      return;
+    }
+
+    gallerySubmit.disabled = true;
+    gallerySubmit.textContent = 'Uploading...';
+    setNote('');
+
+    const storagePath = `gallery/${Date.now()}-${crypto.randomUUID()}.${fileExtension(image)}`;
+    const imageRef = ref(storage, storagePath);
+
+    try {
+      await uploadBytes(imageRef, image, { contentType: image.type });
+      const imageUrl = await getDownloadURL(imageRef);
+      await createGalleryItem({
+        imageUrl,
+        storagePath,
+        caption: imageLabel(image),
+        altText: imageLabel(image),
+        sortOrder: Date.now()
+      });
+
+      galleryForm.reset();
+      setNote('Image uploaded.');
+      await refreshGallery();
+    } catch (error) {
+      console.error(error);
+      setNote(errorMessage(error, 'Could not upload image. Check Firebase Storage permissions.'));
+    } finally {
+      gallerySubmit.disabled = false;
+      gallerySubmit.textContent = 'Upload Image';
+    }
+  });
+
+  galleryList?.addEventListener('click', async (clickEvent) => {
+    const target = clickEvent.target instanceof Element ? clickEvent.target.closest('[data-delete-gallery]') : null;
+    if (!(target instanceof HTMLElement) || !(galleryList instanceof HTMLElement)) return;
+
+    const itemId = target.dataset.deleteGallery;
+    if (!itemId) return;
+
+    const items = JSON.parse(galleryList.dataset.payload ?? '[]') as GalleryItem[];
+    const item = items.find((galleryItem) => galleryItem.id === itemId);
+    const shouldDelete = window.confirm(`Delete "${item?.caption ?? 'this gallery image'}"?`);
+    if (!shouldDelete) return;
+
+    try {
+      if (item?.storagePath) {
+        const storage = getFirebaseStorage();
+        if (storage) await deleteObject(ref(storage, item.storagePath));
+      }
+      await deleteGalleryItem(itemId);
+      await refreshGallery();
+    } catch (error) {
+      console.error(error);
+      setNote(errorMessage(error, 'Could not delete image. Check Firebase permissions.'));
+    }
+  });
+
+  galleryRefresh?.addEventListener('click', () => {
+    void refreshGallery();
+  });
+
+  void refreshGallery();
+</script>

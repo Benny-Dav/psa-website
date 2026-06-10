@@ -1,0 +1,49 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isPublishedEvent() {
+      return resource.data.isPublished == true;
+    }
+
+    match /events/{eventId} {
+      allow read: if isSignedIn() || isPublishedEvent();
+      allow create, update, delete: if isSignedIn();
+    }
+
+    match /calendarSlots/{slotId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /calendarDays/{dayId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /settings/{settingId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /venues/{venueId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /bookingRequests/{requestId} {
+      allow create: if true;
+      allow read, update, delete: if isSignedIn();
+    }
+
+    match /galleryItems/{itemId} {
+      allow read: if true;
+      allow create, update, delete: if isSignedIn();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

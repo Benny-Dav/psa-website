@@ -1,0 +1,116 @@
+---
+import SectionHeading from '@/components/SectionHeading.astro';
+---
+
+<section class="events page-shell" id="events">
+  <div class="section-row">
+    <SectionHeading eyebrow="Events" title="Upcoming engagements" />
+  </div>
+  <div class="event-list" aria-label="Upcoming events" data-event-list></div>
+  <div class="events-state events-state--loading" data-events-state>
+    <div class="events-skeleton" aria-hidden="true">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+    <p class="eyebrow">Checking Schedule</p>
+    <h3>Loading upcoming engagements</h3>
+    <p>Gathering the latest published events.</p>
+  </div>
+</section>
+
+<script>
+  import { listPublishedEvents } from '@/lib/eventsData';
+  import { isFirebaseConfigured } from '@/lib/firebase';
+
+  const eventList = document.querySelector('[data-event-list]');
+  const eventsState = document.querySelector('[data-events-state]');
+
+  function setEventsState(kind, title, copy) {
+    if (!(eventsState instanceof HTMLElement)) return;
+
+    eventsState.hidden = false;
+    eventsState.className = `events-state events-state--${kind}`;
+    eventsState.innerHTML = `
+      <div class="events-state__mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path d="M7 2v2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7Zm12 8H5v8h14v-8ZM5 8h14V6H5v2Z"></path>
+        </svg>
+      </div>
+      <div>
+        <p class="eyebrow">Events</p>
+        <h3>${title}</h3>
+        <p>${copy}</p>
+      </div>
+    `;
+  }
+
+  function formatEventDate(dateValue) {
+    const date = new Date(`${dateValue}T00:00:00`);
+    if (Number.isNaN(date.getTime())) {
+      return { day: '--', month: 'TBA', year: '' };
+    }
+
+    return {
+      day: String(date.getDate()).padStart(2, '0'),
+      month: date.toLocaleString('en', { month: 'short' }).toUpperCase(),
+      year: String(date.getFullYear())
+    };
+  }
+
+  function renderPublishedEvents(events) {
+    if (!(eventList instanceof HTMLElement)) return;
+
+    if (!events.length) {
+      eventList.innerHTML = '';
+      setEventsState(
+        'empty',
+        'New engagements will be announced soon',
+        'There are no published events at the moment. Please check back shortly for upcoming services, teachings, and ministry gatherings.'
+      );
+      return;
+    }
+
+    eventList.innerHTML = events
+      .map((event) => {
+        const date = formatEventDate(event.date);
+        const type = event.eventType === 'virtual' ? 'Online' : 'In person';
+
+        return `
+          <article class="event-card">
+            <div class="event-card__date">
+              <strong>${date.day}</strong>
+              <span>${date.month} ${date.year}</span>
+            </div>
+            <div>
+              <h3>${event.title}</h3>
+              <p class="event-card__meta">${type} | ${event.venue} | ${event.time}</p>
+              <p>${event.description}</p>
+            </div>
+          </article>
+        `;
+      })
+      .join('');
+
+    if (eventsState instanceof HTMLElement) eventsState.hidden = true;
+  }
+
+  if (isFirebaseConfigured) {
+    listPublishedEvents()
+      .then(renderPublishedEvents)
+      .catch((error) => {
+        console.error('Unable to load published events', error);
+        setEventsState(
+          'empty',
+          'New engagements will be announced soon',
+          'The events calendar is being updated. Please check back shortly for confirmed services, teachings, and gatherings.'
+        );
+      });
+  } else {
+    setEventsState(
+      'empty',
+      'New engagements will be announced soon',
+      'The events calendar is being prepared. Please check back shortly for confirmed services, teachings, and gatherings.'
+    );
+  }
+</script>

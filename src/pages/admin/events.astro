@@ -1,0 +1,400 @@
+---
+import AdminShell from '@/components/AdminShell.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { site } from '@/data/site';
+---
+
+<BaseLayout title={`Events Admin | ${site.name}`} description="Manage ministry events.">
+  <AdminShell active="events" eyebrow="Events" title="Events Manager" description="Create, edit, publish, and reuse ministry events.">
+    <section class="admin-module-grid">
+      <section class="admin-panel">
+        <div class="admin-panel__heading">
+          <h2 data-event-form-title>Create event</h2>
+          <div class="admin-heading-actions">
+            <button class="admin-icon-button" type="button" data-event-create aria-label="Create event" title="Create event">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"></path></svg>
+            </button>
+            <button class="admin-icon-button" type="button" data-event-reset aria-label="Close event form" title="Close form" hidden>
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6.4 5 12.6 12.6-1.4 1.4L5 6.4 6.4 5Zm11.2 0L19 6.4 6.4 19 5 17.6 17.6 5Z"></path></svg>
+            </button>
+          </div>
+        </div>
+
+        <form class="admin-form" data-event-form hidden>
+          <input type="hidden" name="id" />
+          <label>
+            <span>Event Name</span>
+            <input name="title" placeholder="Prophetic Encounter Night" required />
+          </label>
+
+          <div class="admin-form-row">
+            <label>
+              <span>Date</span>
+              <input name="date" type="date" required />
+            </label>
+            <label>
+              <span>Time</span>
+              <input name="time" type="time" required />
+            </label>
+          </div>
+
+          <label>
+            <span>Type</span>
+            <select name="eventType" required data-event-type>
+              <option value="in-person">In Person</option>
+              <option value="virtual">Online</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Venue</span>
+            <input name="venue" type="hidden" required data-venue-value />
+            <div class="admin-combobox" data-venue-combobox>
+              <input data-venue-input placeholder="Accra, Ghana" autocomplete="off" />
+              <button type="button" data-venue-toggle aria-label="Show venue options" title="Show venue options">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m7 9 5 5 5-5H7Z"></path></svg>
+              </button>
+              <div class="admin-combobox__options" data-venue-options hidden></div>
+            </div>
+          </label>
+
+          <label>
+            <span>Short Description</span>
+            <textarea name="description" rows="4" maxlength="180" placeholder="A focused night of prayer, worship, and prophetic instruction." required></textarea>
+          </label>
+
+          <label class="admin-checkbox">
+            <input name="isPublished" type="checkbox" />
+            <span>Publish to website</span>
+          </label>
+
+          <button class="button button--primary button--full" type="submit" data-event-submit>Save Event</button>
+          <p class="admin-note" data-event-note></p>
+        </form>
+      </section>
+
+      <section class="admin-panel">
+        <div class="admin-panel__heading">
+          <h2>All events</h2>
+          <button class="admin-icon-button" type="button" data-event-refresh aria-label="Refresh events" title="Refresh events">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M17.7 6.3A8 8 0 1 0 20 12h-2a6 6 0 1 1-1.8-4.2L13 11h8V3l-3.3 3.3Z"></path></svg>
+          </button>
+        </div>
+        <div class="admin-list admin-list--events" data-events-list>
+          <p class="admin-empty">Loading events...</p>
+        </div>
+      </section>
+    </section>
+  </AdminShell>
+</BaseLayout>
+
+<script>
+  import { createEvent, deleteEvent, listEvents, listVenues, saveVenue, updateEvent, type AdminEvent, type Venue } from '@/lib/adminData';
+  import { isFirebaseConfigured } from '@/lib/firebase';
+
+  const eventForm = document.querySelector('[data-event-form]');
+  const eventFormTitle = document.querySelector('[data-event-form-title]');
+  const eventSubmit = document.querySelector('[data-event-submit]');
+  const eventCreate = document.querySelector('[data-event-create]');
+  const eventReset = document.querySelector('[data-event-reset]');
+  const eventRefresh = document.querySelector('[data-event-refresh]');
+  const eventNote = document.querySelector('[data-event-note]');
+  const eventsList = document.querySelector('[data-events-list]');
+  const venueOptions = document.querySelector('[data-venue-options]');
+  const venueCombobox = document.querySelector('[data-venue-combobox]');
+  const venueInput = document.querySelector('[data-venue-input]');
+  const venueValue = document.querySelector('[data-venue-value]');
+  const venueToggle = document.querySelector('[data-venue-toggle]');
+  const eventTypeField = document.querySelector('[data-event-type]');
+  let savedVenues: Venue[] = [];
+
+  function setEventNote(message: string) {
+    if (eventNote instanceof HTMLElement) eventNote.textContent = message;
+  }
+
+  function errorMessage(error: unknown, fallback: string) {
+    const errorWithCode = error as { code?: string; message?: string };
+    if (errorWithCode?.code) return `${fallback} (${errorWithCode.code})`;
+    if (errorWithCode?.message) return `${fallback} (${errorWithCode.message})`;
+    return fallback;
+  }
+
+  function formData(form: HTMLFormElement) {
+    return Object.fromEntries(new FormData(form).entries()) as Record<string, string>;
+  }
+
+  function selectedEventType() {
+    if (eventTypeField instanceof HTMLSelectElement) {
+      return eventTypeField.value as AdminEvent['eventType'];
+    }
+
+    return 'in-person';
+  }
+
+  function closeEventForm() {
+    if (!(eventForm instanceof HTMLFormElement)) return;
+    eventForm.reset();
+    const idField = eventForm.elements.namedItem('id');
+    if (idField instanceof HTMLInputElement) idField.value = '';
+    const publishField = eventForm.elements.namedItem('isPublished');
+    if (publishField instanceof HTMLInputElement) publishField.checked = false;
+    setVenueValue('');
+    if (eventFormTitle instanceof HTMLElement) eventFormTitle.textContent = 'Create event';
+    if (eventSubmit instanceof HTMLButtonElement) eventSubmit.textContent = 'Save Event';
+    if (eventCreate instanceof HTMLButtonElement) eventCreate.hidden = false;
+    if (eventReset instanceof HTMLButtonElement) eventReset.hidden = true;
+    eventForm.hidden = true;
+    renderVenueOptions();
+    setEventNote('');
+  }
+
+  function openEventForm(mode: 'create' | 'edit' = 'create') {
+    if (!(eventForm instanceof HTMLFormElement)) return;
+    eventForm.hidden = false;
+    if (eventCreate instanceof HTMLButtonElement) eventCreate.hidden = true;
+    if (eventReset instanceof HTMLButtonElement) eventReset.hidden = false;
+    if (eventFormTitle instanceof HTMLElement) eventFormTitle.textContent = mode === 'edit' ? 'Edit event' : 'Create event';
+  }
+
+  function eventPayload(form: HTMLFormElement): AdminEvent {
+    const data = formData(form);
+    const publishField = form.elements.namedItem('isPublished');
+    const typedVenue = venueInput instanceof HTMLInputElement ? venueInput.value.trim() : '';
+
+    return {
+      title: data.title,
+      date: data.date,
+      time: data.time,
+      eventType: data.eventType as AdminEvent['eventType'],
+      venue: typedVenue,
+      description: data.description,
+      isPublished: publishField instanceof HTMLInputElement ? publishField.checked : false
+    };
+  }
+
+  async function savePublishedVenue(event: AdminEvent) {
+    if (!event.isPublished) return;
+    await saveVenue(event.venue, event.eventType);
+  }
+
+  async function ensureDefaultOnlineVenues() {
+    await Promise.all([saveVenue('TikTok', 'virtual'), saveVenue('Zoom', 'virtual')]);
+  }
+
+  function renderVenueOptions() {
+    if (!(venueOptions instanceof HTMLElement)) return;
+
+    const currentType = selectedEventType();
+    const venues = savedVenues.filter((venue) => venue.eventType === currentType);
+    venueOptions.innerHTML = venues.length
+      ? venues
+          .map(
+            (venue) => `
+              <button type="button" data-venue-option="${venue.name}">
+                ${venue.name}
+              </button>
+            `
+          )
+          .join('')
+      : '<p>No saved venues yet. Type one to save it with a published event.</p>';
+  }
+
+  async function refreshVenues() {
+    if (!isFirebaseConfigured || !(venueOptions instanceof HTMLElement)) return;
+
+    try {
+      await ensureDefaultOnlineVenues();
+      savedVenues = await listVenues();
+      renderVenueOptions();
+    } catch {
+      savedVenues = [];
+      venueOptions.innerHTML = '';
+    }
+  }
+
+  function setVenueValue(value: string) {
+    if (venueInput instanceof HTMLInputElement) venueInput.value = value;
+    if (venueValue instanceof HTMLInputElement) venueValue.value = value;
+  }
+
+  function toggleVenueOptions(force?: boolean) {
+    if (!(venueOptions instanceof HTMLElement)) return;
+    venueOptions.hidden = typeof force === 'boolean' ? !force : !venueOptions.hidden;
+  }
+
+  function fillEventForm(event: AdminEvent) {
+    if (!(eventForm instanceof HTMLFormElement)) return;
+
+    Object.entries(event).forEach(([key, value]) => {
+      const field = eventForm.elements.namedItem(key);
+      if (field instanceof HTMLInputElement && field.type === 'checkbox') {
+        field.checked = Boolean(value);
+        return;
+      }
+      if (key === 'venue') {
+        setVenueValue(String(value ?? ''));
+        return;
+      }
+      if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement) {
+        field.value = String(value ?? '');
+      }
+    });
+
+    if (eventFormTitle instanceof HTMLElement) eventFormTitle.textContent = 'Edit event';
+    if (eventSubmit instanceof HTMLButtonElement) eventSubmit.textContent = 'Update Event';
+    renderVenueOptions();
+    openEventForm('edit');
+    setEventNote('Editing an existing event. Ended events can be updated for recurring use.');
+    eventForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function renderEvents(events: AdminEvent[]) {
+    if (!(eventsList instanceof HTMLElement)) return;
+
+    eventsList.dataset.payload = JSON.stringify(events);
+    eventsList.innerHTML = events.length
+      ? events.map((event) => `
+        <article class="admin-event-card">
+          <div>
+            <div class="admin-event-card__topline">
+              <strong>${event.title}</strong>
+              <span class="${event.isPublished ? 'is-published' : 'is-draft'}">${event.isPublished ? 'Published' : 'Draft'}</span>
+            </div>
+            <p>${event.date} at ${event.time}</p>
+            <p>${event.eventType === 'virtual' ? 'Online' : 'In person'} | ${event.venue}</p>
+            <small>${event.description}</small>
+          </div>
+          <div class="admin-item__actions">
+            <button type="button" data-edit-event="${event.id}" aria-label="Edit ${event.title}" title="Edit">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 17.3V20h2.7L17.8 8.9l-2.7-2.7L4 17.3ZM19.7 7a1 1 0 0 0 0-1.4l-1.3-1.3a1 1 0 0 0-1.4 0l-1 1 2.7 2.7 1-1Z"></path></svg>
+            </button>
+            <button type="button" data-toggle-event="${event.id}" aria-label="${event.isPublished ? 'Unpublish' : 'Publish'} ${event.title}" title="${event.isPublished ? 'Unpublish' : 'Publish'}">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="${event.isPublished ? 'M12 6.5c3.8 0 7 3.3 8.5 5.5a16.8 16.8 0 0 1-3.1 3.6L19 17.2A19.6 19.6 0 0 0 23 12c-1.7-3-5.7-7.5-11-7.5-1.4 0-2.7.3-3.9.8l1.6 1.6c.7-.3 1.5-.4 2.3-.4ZM2.8 3 21 21.2 19.6 22.6l-3.2-3.2c-1.3.6-2.8 1.1-4.4 1.1-5.3 0-9.3-4.5-11-7.5a19.7 19.7 0 0 1 5-5.6L1.4 4.4 2.8 3Zm4.6 5.8A16.4 16.4 0 0 0 3.5 12c1.5 2.2 4.7 5.5 8.5 5.5.9 0 1.8-.2 2.6-.5l-2-2A3 3 0 0 1 9 11.4l-1.6-1.6Z' : 'M12 4.5c5.3 0 9.3 4.5 11 7.5-1.7 3-5.7 7.5-11 7.5S2.7 15 1 12c1.7-3 5.7-7.5 11-7.5Zm0 2C8.2 6.5 5 9.8 3.5 12c1.5 2.2 4.7 5.5 8.5 5.5s7-3.3 8.5-5.5C19 9.8 15.8 6.5 12 6.5Zm0 2.5a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z'}"></path></svg>
+            </button>
+            <button type="button" data-delete-event="${event.id}" aria-label="Delete ${event.title}" title="Delete">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-3 6h12l-1 12H7L6 9Zm4 2v8h2v-8h-2Zm4 0v8h2v-8h-2Z"></path></svg>
+            </button>
+          </div>
+        </article>
+      `).join('')
+      : '<p class="admin-empty">No events yet. Create the first event using the form.</p>';
+  }
+
+  async function refreshEvents() {
+    if (!isFirebaseConfigured) {
+      if (eventsList instanceof HTMLElement) {
+        eventsList.innerHTML = '<p class="admin-empty">Firebase is not configured yet. Add .env.local values before managing events.</p>';
+      }
+      return;
+    }
+
+    try {
+      const events = await listEvents();
+      renderEvents(events);
+    } catch (error) {
+      console.error(error);
+      if (eventsList instanceof HTMLElement) {
+        eventsList.innerHTML = `<p class="admin-empty">${errorMessage(error, 'Unable to load events. Check Firebase permissions.')}</p>`;
+      }
+    }
+  }
+
+  eventForm?.addEventListener('submit', async (submitEvent) => {
+    submitEvent.preventDefault();
+    if (!(eventForm instanceof HTMLFormElement) || !(eventSubmit instanceof HTMLButtonElement)) return;
+    if (!eventForm.reportValidity()) return;
+
+    const data = formData(eventForm);
+    eventSubmit.disabled = true;
+    eventSubmit.textContent = data.id ? 'Updating...' : 'Saving...';
+    setEventNote('');
+
+    try {
+      const payload = eventPayload(eventForm);
+      if (data.id) await updateEvent(data.id, payload);
+      else await createEvent(payload);
+      await savePublishedVenue(payload);
+      closeEventForm();
+      await refreshVenues();
+      await refreshEvents();
+      setEventNote(data.id ? 'Event updated.' : 'Event created.');
+    } catch (error) {
+      console.error(error);
+      setEventNote(errorMessage(error, 'Could not save event. Check Firebase configuration and permissions.'));
+    } finally {
+      eventSubmit.disabled = false;
+      if (eventSubmit.textContent === 'Saving...' || eventSubmit.textContent === 'Updating...') {
+        eventSubmit.textContent = data.id ? 'Update Event' : 'Save Event';
+      }
+    }
+  });
+
+  eventCreate?.addEventListener('click', () => {
+    if (eventForm instanceof HTMLFormElement) eventForm.reset();
+    renderVenueOptions();
+    openEventForm('create');
+  });
+  eventReset?.addEventListener('click', closeEventForm);
+  eventRefresh?.addEventListener('click', refreshEvents);
+  eventTypeField?.addEventListener('change', () => {
+    setVenueValue('');
+    renderVenueOptions();
+    toggleVenueOptions(false);
+  });
+  venueInput?.addEventListener('input', () => {
+    if (venueInput instanceof HTMLInputElement && venueValue instanceof HTMLInputElement) {
+      venueValue.value = venueInput.value;
+    }
+  });
+  venueInput?.addEventListener('focus', () => toggleVenueOptions(true));
+  venueToggle?.addEventListener('click', () => toggleVenueOptions());
+  venueOptions?.addEventListener('click', (clickEvent) => {
+    const target = clickEvent.target instanceof Element ? clickEvent.target.closest('[data-venue-option]') : null;
+    if (!(target instanceof HTMLElement)) return;
+
+    setVenueValue(target.dataset.venueOption ?? '');
+    toggleVenueOptions(false);
+  });
+  document.addEventListener('click', (clickEvent) => {
+    if (!(venueCombobox instanceof HTMLElement) || !(clickEvent.target instanceof Node)) return;
+    if (!venueCombobox.contains(clickEvent.target)) toggleVenueOptions(false);
+  });
+
+  eventsList?.addEventListener('click', async (clickEvent) => {
+    const target = clickEvent.target instanceof Element ? clickEvent.target : null;
+    if (!target || !(eventsList instanceof HTMLElement)) return;
+
+    const events = JSON.parse(eventsList.dataset.payload ?? '[]') as AdminEvent[];
+    const editId = target.getAttribute('data-edit-event');
+    const toggleId = target.getAttribute('data-toggle-event');
+    const deleteId = target.getAttribute('data-delete-event');
+
+    if (editId) {
+      const event = events.find((item) => item.id === editId);
+      if (event) fillEventForm(event);
+    }
+
+    if (toggleId) {
+      const event = events.find((item) => item.id === toggleId);
+      if (!event?.id) return;
+      const nextPublishedState = !event.isPublished;
+      await updateEvent(event.id, { isPublished: nextPublishedState });
+      if (nextPublishedState) {
+        await savePublishedVenue({ ...event, isPublished: true });
+        await refreshVenues();
+      }
+      await refreshEvents();
+    }
+
+    if (deleteId) {
+      const event = events.find((item) => item.id === deleteId);
+      const shouldDelete = window.confirm(`Delete "${event?.title ?? 'this event'}"? Ended events should usually be edited for recurring use instead.`);
+      if (!shouldDelete) return;
+      await deleteEvent(deleteId);
+      await refreshEvents();
+    }
+  });
+
+  refreshVenues();
+  refreshEvents();
+</script>
