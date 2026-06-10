@@ -581,7 +581,7 @@ button {
 .calendar-card,
 .slot-card,
 .give__card,
-.gallery figure {
+.gallery__empty {
   border: 1px solid var(--line);
   background: var(--panel);
   backdrop-filter: blur(20px);
@@ -592,7 +592,7 @@ button {
 .event-card,
 .calendar-card,
 .slot-card,
-.gallery figure,
+.gallery__empty,
 .give__card {
   transition:
     border-color 180ms ease,
@@ -602,8 +602,7 @@ button {
 }
 
 .about__stats article:hover,
-.event-card:hover,
-.gallery figure:hover {
+.event-card:hover {
   border-color: rgba(212, 175, 55, 0.34);
   transform: translateY(-2px);
 }
@@ -1185,32 +1184,26 @@ button {
 
 .gallery figure {
   margin: 0;
-  overflow: hidden;
 }
 
 .gallery__button {
   display: block;
   width: 100%;
+  aspect-ratio: 1;
   border: 0;
+  border-radius: 8px;
   background: transparent;
   padding: 0;
+  overflow: hidden;
 }
 
 .gallery img {
+  display: block;
   width: 100%;
-  aspect-ratio: 1;
-  object-fit: contain;
-  background: rgba(255, 255, 255, 0.035);
-}
-
-.gallery figcaption {
-  padding: 10px;
-  color: var(--muted);
-  font-family: Montserrat, Inter, sans-serif;
-  font-size: 0.75rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  height: 100%;
+  border: 1px solid rgba(212, 175, 55, 0.34);
+  border-radius: 8px;
+  object-fit: cover;
 }
 
 .gallery__empty {
