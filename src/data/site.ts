@@ -5,13 +5,13 @@ export const site = {
   description:
     'A modern ministry platform for prophetic guidance, kingdom teaching, events, appointments, and giving.',
   email: 'hello@prophetselasiadrah.org',
-  phone: '+233 00 000 0000',
+  phone: '',
   whatsappNumber: '233595742231',
   location: 'Accra, Ghana',
   socials: [
-    { label: 'TikTok', href: '#' },
-    { label: 'Instagram', href: '#' },
-    { label: 'YouTube', href: '#' }
+    { label: 'TikTok', href: '#https://www.tiktok.com/@selasi.adrah?_r=1&_t=ZS-975s8UQ0EOi' },
+    { label: 'Instagram', href: '#https://www.instagram.com/selasiadrah?igsh=ZnZpNnk2anhlaWpm' },
+    { label: 'YouTube', href: '#https://youtube.com/@selasiadrah?si=sCcbTQcaUWeZ3kSR' }
   ]
 };
 

@@ -19,7 +19,20 @@ import { site } from '@/data/site';
         </label>
         <label>
           <span>Password</span>
-          <input type="password" name="password" autocomplete="current-password" required />
+          <div class="admin-password-field">
+            <input type="password" name="password" autocomplete="current-password" required data-password-input />
+            <button type="button" data-password-toggle aria-label="Show password" aria-pressed="false" title="Show password">
+              <svg data-password-icon-show width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              <svg data-password-icon-hide width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" hidden>
+                <path d="M2 12s3.5-7 10-7a10.6 10.6 0 0 1 5.5 1.6M22 12s-3.5 7-10 7a10.6 10.6 0 0 1-5.5-1.6"></path>
+                <path d="M4 4l16 16"></path>
+                <path d="M9.9 9.9A3 3 0 0 0 14.1 14.1"></path>
+              </svg>
+            </button>
+          </div>
         </label>
         <button class="button button--primary button--full" type="submit" data-login-button>Sign In</button>
         <p class="admin-note" data-login-note></p>
@@ -35,6 +48,10 @@ import { site } from '@/data/site';
   const loginForm = document.querySelector('[data-login-form]');
   const loginNote = document.querySelector('[data-login-note]');
   const loginButton = document.querySelector('[data-login-button]');
+  const passwordInput = document.querySelector('[data-password-input]');
+  const passwordToggle = document.querySelector('[data-password-toggle]');
+  const passwordIconShow = document.querySelector('[data-password-icon-show]');
+  const passwordIconHide = document.querySelector('[data-password-icon-hide]');
 
   function setNote(message: string) {
     if (loginNote instanceof HTMLElement) loginNote.textContent = message;
@@ -43,6 +60,17 @@ import { site } from '@/data/site';
   function formData(form: HTMLFormElement) {
     return Object.fromEntries(new FormData(form).entries()) as Record<string, string>;
   }
+
+  passwordToggle?.addEventListener('click', () => {
+    if (!(passwordInput instanceof HTMLInputElement) || !(passwordToggle instanceof HTMLButtonElement)) return;
+    const showPassword = passwordInput.type === 'password';
+    passwordInput.type = showPassword ? 'text' : 'password';
+    passwordToggle.setAttribute('aria-label', showPassword ? 'Hide password' : 'Show password');
+    passwordToggle.setAttribute('aria-pressed', String(showPassword));
+    passwordToggle.setAttribute('title', showPassword ? 'Hide password' : 'Show password');
+    if (passwordIconShow instanceof SVGElement) passwordIconShow.hidden = showPassword;
+    if (passwordIconHide instanceof SVGElement) passwordIconHide.hidden = !showPassword;
+  });
 
   if (!isFirebaseConfigured) {
     setNote('Firebase is not configured yet. Add your project values to .env.local.');

@@ -26,6 +26,15 @@ import SectionHeading from '@/components/SectionHeading.astro';
   const eventList = document.querySelector('[data-event-list]');
   const eventsState = document.querySelector('[data-events-state]');
 
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
   function setEventsState(kind, title, copy) {
     if (!(eventsState instanceof HTMLElement)) return;
 
@@ -75,6 +84,7 @@ import SectionHeading from '@/components/SectionHeading.astro';
       .map((event) => {
         const date = formatEventDate(event.date);
         const type = event.eventType === 'virtual' ? 'Online' : 'In person';
+        const isPdfFlyer = event.flyerContentType === 'application/pdf';
 
         return `
           <article class="event-card">
@@ -82,10 +92,19 @@ import SectionHeading from '@/components/SectionHeading.astro';
               <strong>${date.day}</strong>
               <span>${date.month} ${date.year}</span>
             </div>
-            <div>
-              <h3>${event.title}</h3>
-              <p class="event-card__meta">${type} | ${event.venue} | ${event.time}</p>
-              <p>${event.description}</p>
+            <div class="event-card__media ${event.flyerUrl ? 'has-flyer' : 'has-placeholder'}">
+              ${
+                event.flyerUrl && isPdfFlyer
+                  ? `<a class="event-card__pdf" href="${escapeHtml(event.flyerUrl)}" target="_blank" rel="noreferrer">Open PDF flyer</a>`
+                  : event.flyerUrl
+                  ? `<img src="${escapeHtml(event.flyerUrl)}" alt="${escapeHtml(event.title)} flyer" loading="lazy" />`
+                  : '<span aria-hidden="true">PSA</span>'
+              }
+            </div>
+            <div class="event-card__body">
+              <h3>${escapeHtml(event.title)}</h3>
+              <p class="event-card__meta">${escapeHtml(type)} | ${escapeHtml(event.venue)} | ${escapeHtml(event.time)}</p>
+              <p>${escapeHtml(event.description)}</p>
             </div>
           </article>
         `;

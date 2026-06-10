@@ -63,6 +63,17 @@ import { site } from '@/data/site';
             <textarea name="description" rows="4" maxlength="180" placeholder="A focused night of prayer, worship, and prophetic instruction." required></textarea>
           </label>
 
+          <div class="admin-flyer-field">
+            <label>
+              <span>Optional Flyer</span>
+              <input name="flyer" type="file" accept="image/png,image/jpeg,image/webp,application/pdf" data-event-flyer />
+            </label>
+            <div class="admin-flyer-preview" data-event-flyer-preview hidden>
+              <img src="" alt="" data-event-flyer-image />
+              <button type="button" data-remove-event-flyer>Remove Flyer</button>
+            </div>
+          </div>
+
           <label class="admin-checkbox">
             <input name="isPublished" type="checkbox" />
             <span>Publish to website</span>
@@ -89,8 +100,9 @@ import { site } from '@/data/site';
 </BaseLayout>
 
 <script>
+  import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
   import { createEvent, deleteEvent, listEvents, listVenues, saveVenue, updateEvent, type AdminEvent, type Venue } from '@/lib/adminData';
-  import { isFirebaseConfigured } from '@/lib/firebase';
+  import { getFirebaseStorage, isFirebaseConfigured } from '@/lib/firebase';
 
   const eventForm = document.querySelector('[data-event-form]');
   const eventFormTitle = document.querySelector('[data-event-form-title]');
@@ -106,7 +118,15 @@ import { site } from '@/data/site';
   const venueValue = document.querySelector('[data-venue-value]');
   const venueToggle = document.querySelector('[data-venue-toggle]');
   const eventTypeField = document.querySelector('[data-event-type]');
+  const eventFlyer = document.querySelector('[data-event-flyer]');
+  const eventFlyerPreview = document.querySelector('[data-event-flyer-preview]');
+  const eventFlyerImage = document.querySelector('[data-event-flyer-image]');
+  const removeEventFlyer = document.querySelector('[data-remove-event-flyer]');
   let savedVenues: Venue[] = [];
+  let currentFlyerUrl = '';
+  let currentFlyerStoragePath = '';
+  let currentFlyerContentType = '';
+  let shouldRemoveFlyer = false;
 
   function setEventNote(message: string) {
     if (eventNote instanceof HTMLElement) eventNote.textContent = message;
@@ -121,6 +141,72 @@ import { site } from '@/data/site';
 
   function formData(form: HTMLFormElement) {
     return Object.fromEntries(new FormData(form).entries()) as Record<string, string>;
+  }
+
+  function fileExtension(file: File) {
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (extension && ['jpg', 'jpeg', 'png', 'webp', 'pdf'].includes(extension)) return extension;
+    if (file.type === 'application/pdf') return 'pdf';
+    if (file.type === 'image/png') return 'png';
+    if (file.type === 'image/webp') return 'webp';
+    return 'jpg';
+  }
+
+  function selectedFlyerFile() {
+    if (!(eventFlyer instanceof HTMLInputElement)) return null;
+    return eventFlyer.files?.[0] ?? null;
+  }
+
+  function isValidImage(file: File) {
+    return ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type);
+  }
+
+  function renderFlyerPreview(url: string, contentType = currentFlyerContentType) {
+    if (!(eventFlyerPreview instanceof HTMLElement) || !(eventFlyerImage instanceof HTMLImageElement)) return;
+    currentFlyerUrl = url;
+    if (contentType === 'application/pdf') {
+      eventFlyerImage.removeAttribute('src');
+      eventFlyerImage.alt = '';
+      eventFlyerImage.hidden = true;
+      eventFlyerPreview.dataset.fileType = 'pdf';
+    } else {
+      eventFlyerImage.src = url;
+      eventFlyerImage.alt = 'Event flyer preview';
+      eventFlyerImage.hidden = false;
+      eventFlyerPreview.dataset.fileType = 'image';
+    }
+    eventFlyerPreview.hidden = false;
+  }
+
+  function clearFlyerPreview() {
+    currentFlyerUrl = '';
+    currentFlyerContentType = '';
+    if (eventFlyer instanceof HTMLInputElement) eventFlyer.value = '';
+    if (eventFlyerPreview instanceof HTMLElement) eventFlyerPreview.hidden = true;
+    if (eventFlyerImage instanceof HTMLImageElement) {
+      eventFlyerImage.src = '';
+      eventFlyerImage.alt = '';
+      eventFlyerImage.hidden = false;
+    }
+  }
+
+  async function uploadFlyer(file: File) {
+    const storage = getFirebaseStorage();
+    if (!storage) throw new Error('Firebase Storage is not configured.');
+    const storagePath = `event-flyers/${Date.now()}-${crypto.randomUUID()}.${fileExtension(file)}`;
+    const flyerRef = ref(storage, storagePath);
+    await uploadBytes(flyerRef, file, { contentType: file.type });
+    return {
+      flyerUrl: await getDownloadURL(flyerRef),
+      flyerStoragePath: storagePath,
+      flyerContentType: file.type
+    };
+  }
+
+  async function deleteStoredFlyer(storagePath: string) {
+    const storage = getFirebaseStorage();
+    if (!storage) return;
+    await deleteObject(ref(storage, storagePath));
   }
 
   function selectedEventType() {
@@ -143,6 +229,9 @@ import { site } from '@/data/site';
     if (eventSubmit instanceof HTMLButtonElement) eventSubmit.textContent = 'Save Event';
     if (eventCreate instanceof HTMLButtonElement) eventCreate.hidden = false;
     if (eventReset instanceof HTMLButtonElement) eventReset.hidden = true;
+    currentFlyerStoragePath = '';
+    shouldRemoveFlyer = false;
+    clearFlyerPreview();
     eventForm.hidden = true;
     renderVenueOptions();
     setEventNote('');
@@ -168,7 +257,10 @@ import { site } from '@/data/site';
       eventType: data.eventType as AdminEvent['eventType'],
       venue: typedVenue,
       description: data.description,
-      isPublished: publishField instanceof HTMLInputElement ? publishField.checked : false
+      isPublished: publishField instanceof HTMLInputElement ? publishField.checked : false,
+      flyerUrl: currentFlyerUrl,
+      flyerStoragePath: currentFlyerStoragePath,
+      flyerContentType: currentFlyerContentType
     };
   }
 
@@ -242,6 +334,11 @@ import { site } from '@/data/site';
 
     if (eventFormTitle instanceof HTMLElement) eventFormTitle.textContent = 'Edit event';
     if (eventSubmit instanceof HTMLButtonElement) eventSubmit.textContent = 'Update Event';
+    currentFlyerStoragePath = event.flyerStoragePath ?? '';
+    currentFlyerContentType = event.flyerContentType ?? '';
+    shouldRemoveFlyer = false;
+    if (event.flyerUrl) renderFlyerPreview(event.flyerUrl, event.flyerContentType);
+    else clearFlyerPreview();
     renderVenueOptions();
     openEventForm('edit');
     setEventNote('Editing an existing event. Ended events can be updated for recurring use.');
@@ -262,6 +359,7 @@ import { site } from '@/data/site';
             </div>
             <p>${event.date} at ${event.time}</p>
             <p>${event.eventType === 'virtual' ? 'Online' : 'In person'} | ${event.venue}</p>
+            ${event.flyerUrl ? '<p class="admin-event-card__flyer">Flyer attached</p>' : ''}
             <small>${event.description}</small>
           </div>
           <div class="admin-item__actions">
@@ -305,14 +403,36 @@ import { site } from '@/data/site';
     if (!eventForm.reportValidity()) return;
 
     const data = formData(eventForm);
+    const flyerFile = selectedFlyerFile();
+    const previousFlyerStoragePath = currentFlyerStoragePath;
+    if (flyerFile && !isValidImage(flyerFile)) {
+      setEventNote('Upload a JPG, PNG, WebP, or PDF flyer.');
+      return;
+    }
+
     eventSubmit.disabled = true;
-    eventSubmit.textContent = data.id ? 'Updating...' : 'Saving...';
+    eventSubmit.textContent = flyerFile ? 'Uploading...' : data.id ? 'Updating...' : 'Saving...';
     setEventNote('');
 
     try {
+      if (flyerFile) {
+        const flyer = await uploadFlyer(flyerFile);
+        currentFlyerUrl = flyer.flyerUrl;
+        currentFlyerStoragePath = flyer.flyerStoragePath;
+        currentFlyerContentType = flyer.flyerContentType;
+        shouldRemoveFlyer = false;
+      } else if (shouldRemoveFlyer) {
+        currentFlyerUrl = '';
+        currentFlyerStoragePath = '';
+        currentFlyerContentType = '';
+      }
+
       const payload = eventPayload(eventForm);
       if (data.id) await updateEvent(data.id, payload);
       else await createEvent(payload);
+      if ((flyerFile || shouldRemoveFlyer) && previousFlyerStoragePath) {
+        await deleteStoredFlyer(previousFlyerStoragePath);
+      }
       await savePublishedVenue(payload);
       closeEventForm();
       await refreshVenues();
@@ -331,11 +451,32 @@ import { site } from '@/data/site';
 
   eventCreate?.addEventListener('click', () => {
     if (eventForm instanceof HTMLFormElement) eventForm.reset();
+    currentFlyerStoragePath = '';
+    shouldRemoveFlyer = false;
+    clearFlyerPreview();
     renderVenueOptions();
     openEventForm('create');
   });
   eventReset?.addEventListener('click', closeEventForm);
   eventRefresh?.addEventListener('click', refreshEvents);
+  eventFlyer?.addEventListener('change', () => {
+    const flyerFile = selectedFlyerFile();
+    if (!flyerFile) return;
+    if (!isValidImage(flyerFile)) {
+      setEventNote('Upload a JPG, PNG, WebP, or PDF flyer.');
+      clearFlyerPreview();
+      return;
+    }
+
+    shouldRemoveFlyer = false;
+    currentFlyerContentType = flyerFile.type;
+    renderFlyerPreview(URL.createObjectURL(flyerFile), flyerFile.type);
+  });
+  removeEventFlyer?.addEventListener('click', () => {
+    shouldRemoveFlyer = Boolean(currentFlyerStoragePath);
+    clearFlyerPreview();
+    setEventNote('Flyer will be removed when you save the event.');
+  });
   eventTypeField?.addEventListener('change', () => {
     setVenueValue('');
     renderVenueOptions();
@@ -391,6 +532,7 @@ import { site } from '@/data/site';
       const shouldDelete = window.confirm(`Delete "${event?.title ?? 'this event'}"? Ended events should usually be edited for recurring use instead.`);
       if (!shouldDelete) return;
       await deleteEvent(deleteId);
+      if (event?.flyerStoragePath) await deleteStoredFlyer(event.flyerStoragePath);
       await refreshEvents();
     }
   });

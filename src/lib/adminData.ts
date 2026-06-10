@@ -25,6 +25,9 @@ export type AdminEvent = {
   venue: string;
   description: string;
   isPublished: boolean;
+  flyerUrl?: string;
+  flyerStoragePath?: string;
+  flyerContentType?: string;
   status?: 'draft' | 'published' | 'archived';
 };
 

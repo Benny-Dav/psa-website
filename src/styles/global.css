@@ -83,6 +83,8 @@ button {
   .mobile-menu,
   .about__stats article,
   .event-card,
+  .event-card__media,
+  .event-card__pdf,
   .events-state,
   .events-state__mark,
   .events-skeleton span,
@@ -127,6 +129,9 @@ button {
   .admin-gallery-card,
   .admin-gallery-card img,
   .admin-gallery-card button,
+  .admin-flyer-preview,
+  .admin-flyer-preview img,
+  .admin-flyer-preview button,
   .admin-mode-control button,
   .admin-slot-card,
   .admin-date-strip span,
@@ -527,6 +532,10 @@ button {
   padding: 84px 0;
 }
 
+.events {
+  padding-block: clamp(56px, 8svh, 84px);
+}
+
 .section-heading {
   max-width: 720px;
   margin-bottom: 34px;
@@ -653,8 +662,10 @@ button {
 
 .event-card {
   display: grid;
-  gap: 18px;
+  grid-template-rows: auto minmax(220px, 34svh) 1fr;
+  gap: 14px;
   flex: 0 0 min(82vw, 360px);
+  height: clamp(430px, 72svh, 560px);
   padding: 22px;
   scroll-snap-align: start;
 }
@@ -678,6 +689,71 @@ button {
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.event-card__media {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 220px;
+  overflow: hidden;
+  border: 1px solid rgba(212, 175, 55, 0.16);
+  background:
+    linear-gradient(135deg, rgba(212, 175, 55, 0.08), transparent 48%),
+    rgba(255, 255, 255, 0.035);
+}
+
+.event-card__media img {
+  width: 100%;
+  height: 100%;
+  max-height: 34svh;
+  object-fit: contain;
+}
+
+.event-card__media span {
+  color: rgba(248, 216, 122, 0.58);
+  font-family: Montserrat, Inter, sans-serif;
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.event-card__pdf {
+  display: grid;
+  min-height: 52px;
+  place-items: center;
+  border: 1px solid rgba(212, 175, 55, 0.28);
+  background: rgba(212, 175, 55, 0.08);
+  color: var(--gold-soft);
+  padding: 12px 14px;
+  font-family: Montserrat, Inter, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.event-card__body {
+  min-width: 0;
+}
+
+.event-card__body h3,
+.event-card__body p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+}
+
+.event-card__body h3 {
+  -webkit-line-clamp: 2;
+}
+
+.event-card__body .event-card__meta {
+  -webkit-line-clamp: 2;
+}
+
+.event-card__body p:not(.event-card__meta) {
+  -webkit-line-clamp: 2;
 }
 
 .events-state {
@@ -1519,6 +1595,42 @@ button {
 
 .admin-form select option {
   color: var(--night);
+}
+
+.admin-password-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.42);
+}
+
+.admin-form .admin-password-field input {
+  border-bottom: 0;
+  background: transparent;
+}
+
+.admin-password-field button {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-left: 1px solid rgba(212, 175, 55, 0.2);
+  background: rgba(212, 175, 55, 0.05);
+  color: var(--gold-soft);
+  cursor: pointer;
+}
+
+.admin-password-field svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.admin-password-field button:hover,
+.admin-password-field button:focus-visible {
+  background: rgba(212, 175, 55, 0.12);
+  color: var(--white);
 }
 
 .admin-combobox {
@@ -2454,6 +2566,59 @@ button {
   gap: 14px;
 }
 
+.admin-flyer-field {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-flyer-preview {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 10px;
+}
+
+.admin-flyer-preview[hidden] {
+  display: none;
+}
+
+.admin-flyer-preview img {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.admin-flyer-preview[data-file-type='pdf']::before {
+  content: 'PDF flyer selected';
+  display: grid;
+  min-height: 120px;
+  place-items: center;
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--gold-soft);
+  font-family: Montserrat, Inter, sans-serif;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-flyer-preview button,
+.admin-event-card__flyer {
+  width: fit-content;
+  border: 1px solid rgba(212, 175, 55, 0.28);
+  background: rgba(212, 175, 55, 0.06);
+  color: var(--gold-soft);
+  padding: 7px 9px;
+  font-family: Montserrat, Inter, sans-serif;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .admin-toggle {
   display: flex;
   align-items: center;
@@ -2574,6 +2739,10 @@ button {
   color: var(--muted);
 }
 
+.admin-event-card .admin-event-card__flyer {
+  color: var(--gold-soft);
+}
+
 .admin-event-card small {
   line-height: 1.5;
 }
@@ -2645,8 +2814,8 @@ button {
   }
 
   .brand img {
-    width: 70px;
-    height: 70px;
+    width: 88px;
+    height: 88px;
   }
 
   .desktop-nav {
@@ -2772,6 +2941,10 @@ button {
     padding: 112px 0;
   }
 
+  .events {
+    padding-block: clamp(56px, 7svh, 84px);
+  }
+
   .about__grid,
   .booking__grid {
     grid-template-columns: 1.05fr 0.95fr;
@@ -2783,21 +2956,34 @@ button {
   }
 
   .event-card {
-    flex: initial;
-    grid-template-columns: 132px 1fr auto;
-    align-items: center;
+    flex: 0 0 min(31vw, 360px);
+    grid-template-columns: auto;
+    grid-template-rows: auto minmax(260px, 38svh) 1fr;
+    align-items: stretch;
+    height: clamp(500px, 68svh, 620px);
   }
 
   .event-list {
-    display: grid;
+    display: flex;
     margin-inline: 0;
-    padding: 0;
-    overflow: visible;
+    padding: 0 0 10px;
+    overflow-x: auto;
   }
 
   .event-card__date {
     display: grid;
     gap: 2px;
+  }
+
+  .event-card__media,
+  .event-card__media img {
+    height: 100%;
+    min-height: 260px;
+    max-height: 38svh;
+  }
+
+  .event-card__body p:not(.event-card__meta) {
+    -webkit-line-clamp: 2;
   }
 
   .footer {
