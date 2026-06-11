@@ -6,7 +6,7 @@ export const site = {
     'A modern ministry platform for prophetic guidance, kingdom teaching, events, appointments, and giving.',
   email: 'hello@prophetselasiadrah.org',
   phone: '',
-  whatsappNumber: '233595742231',
+  whatsappNumber: '233530588605',
   location: 'Accra, Ghana',
   socials: [
     { label: 'TikTok', href: 'https://www.tiktok.com/@selasi.adrah?_r=1&_t=ZS-975s8UQ0EOi' },
